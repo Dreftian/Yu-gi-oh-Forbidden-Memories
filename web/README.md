@@ -31,16 +31,15 @@ cinco idiomas).
 ## Puesta en marcha
 
 ```sh
-npm install
-npm run build:data      # genera el catálogo desde el decompilado
-npm run build           # compila motor, cliente y servidor
-npm start               # servidor de juego en el puerto 8787
+npm install          # compila el motor al terminar
+npm run build        # motor, cliente y servidor
+npm start            # servidor de juego en el puerto 8787
 ```
 
 En desarrollo, con recarga en caliente:
 
 ```sh
-npm run dev             # servidor en 8787 y cliente en 5173
+npm run dev          # servidor en 8787 y cliente en 5173
 ```
 
 El cliente queda en <http://localhost:5173> y el servidor en el 8787. En
@@ -55,8 +54,14 @@ node tools/build-data.mjs --decomp ../Yu-Gi-Oh-Forbidden-Memories-Recompiled-mas
 
 El catálogo generado (`packages/engine/src/data/cards.generated.ts`) **está en el
 repositorio** a propósito: son 722 cartas con sus estadísticas y su texto, unos
-400 KB, y sin él el clon no compila ni tiene con qué jugar. Se regenera solo
-cuando cambian los datos del decompilado.
+400 KB, y sin él el clon no compila ni tiene con qué jugar. `npm install`
+compila el motor, así que no hace falta ningún paso previo.
+
+Para regenerarlo cuando cambien los datos del decompilado:
+
+```sh
+npm run build:data
+```
 
 ### Comprobar el emparejamiento
 

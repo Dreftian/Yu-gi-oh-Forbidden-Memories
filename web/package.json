@@ -13,11 +13,13 @@
     "node": ">=20"
   },
   "scripts": {
+    "postinstall": "npm run build:engine",
     "build:data": "node tools/build-data.mjs",
-    "dev": "npm run build:data && npm run build --workspace @yfm/engine && concurrently -n server,client -c cyan,magenta \"npm:dev:server\" \"npm:dev:client\"",
+    "build:engine": "npm run build --workspace @yfm/engine",
+    "dev": "concurrently -n server,client -c cyan,magenta \"npm:dev:server\" \"npm:dev:client\"",
     "dev:server": "npm run dev --workspace @yfm/server",
     "dev:client": "npm run dev --workspace @yfm/client",
-    "build": "npm run build:data && npm run build --workspace @yfm/engine && npm run build --workspace @yfm/client && npm run build --workspace @yfm/server",
+    "build": "npm run build --workspace @yfm/engine && npm run build --workspace @yfm/client && npm run build --workspace @yfm/server",
     "start": "npm run start --workspace @yfm/server",
     "test": "npm run test --workspace @yfm/engine && npm run test --workspace @yfm/server",
     "check:match": "node tools/check-match.mjs",

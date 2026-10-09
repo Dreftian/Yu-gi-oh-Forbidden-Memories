@@ -1,0 +1,8 @@
+# El checkout del decompilado de PS1 no se versiona aqui: es otro proyecto,
+# con su propia licencia, y la version web solo necesita los datos que el
+# generador extrae de el. El catalogo ya generado si esta en el repositorio.
+Yu-Gi-Oh-Forbidden-Memories-Recompiled-master/
+
+# dependencia opcional: el generador la usa si el decompilado esta disponible
+# en esa carpeta hermana. No hace falta tenerla para compilar ni para jugar.
+Yu-Gi-Oh-Forbidden-Memories-Recompiled/

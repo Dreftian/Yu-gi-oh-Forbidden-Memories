@@ -1,0 +1,21 @@
+# Dependencias
+node_modules/
+
+# Compilacion
+dist/
+dist-test/
+*.tsbuildinfo
+
+# Entorno
+.env
+.env.local
+
+# Editor y sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Registros
+*.log
+npm-debug.log*

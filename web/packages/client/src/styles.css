@@ -1,0 +1,730 @@
+/*
+ * Estilos del cliente.
+ *
+ * El juego no lleva arte: las cartas se dibujan con marcos y colores por tipo,
+ * igual que las fichas que usaba el original antes de que llegaran las texturas.
+ * La paleta sale del codigo del decompilado: oro para monstruos, verde para
+ * magia y equip, rosa para trampa, azul para ritual.
+ */
+
+:root {
+  /* Fondo y superficies. */
+  --bg: #12101c;
+  --surface: #1c1830;
+  --surface-2: #262041;
+  --border: #3b3358;
+  --border-bright: #564a80;
+
+  /* Texto. */
+  --text: #eae6dc;
+  --text-dim: #a49cc0;
+  --text-faint: #6f6790;
+
+  /* Acentos. */
+  --gold: #d4a437;
+  --green: #4a9d5f;
+  --pink: #c4518c;
+  --blue: #4a7fc4;
+  --red: #c4453f;
+  --life: #c4453f;
+
+  /* Marcos de carta por tipo, del catalogo del retail. */
+  --frame-monster: var(--gold);
+  --frame-magic: var(--green);
+  --frame-equip: var(--green);
+  --frame-trap: var(--pink);
+  --frame-ritual: var(--blue);
+
+  --radius: 6px;
+  --card-w: 92px;
+  --card-h: 128px;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  background: radial-gradient(ellipse at 50% 0%, #1d1932 0%, var(--bg) 70%);
+  color: var(--text);
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+/* ------------------------------------------------------------ Cabecera --- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 1.05rem;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+}
+
+.topbar h1 span {
+  color: var(--gold);
+}
+
+.topbar-spacer {
+  flex: 1;
+}
+
+/* -------------------------------------------------------------- Chips ---- */
+
+.chips {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.8rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.chip strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.chip.is-offline strong {
+  color: var(--red);
+}
+
+/* ------------------------------------------------------------ Botones ---- */
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    transform 80ms ease;
+}
+
+button:hover:not(:disabled) {
+  background: #2f2852;
+  border-color: var(--gold);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #241a05;
+  font-weight: 600;
+}
+
+button.primary:hover:not(:disabled) {
+  background: #e6b748;
+  border-color: #e6b748;
+}
+
+button.danger {
+  border-color: var(--red);
+  color: #f0a9a6;
+}
+
+button.ghost {
+  background: transparent;
+}
+
+input[type='text'] {
+  font: inherit;
+  color: var(--text);
+  background: #14111f;
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.7rem;
+  min-width: 12rem;
+}
+
+input[type='text']:focus {
+  outline: none;
+  border-color: var(--gold);
+}
+
+/* ------------------------------------------------------------- Paneles --- */
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.panel h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.panel p {
+  margin: 0.4rem 0;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+
+.row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.stack {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.card-art span {
+  white-space: pre-line;
+  line-height: 1.3;
+}
+
+/* ------------------------------------------------------- Pantalla 1: ------ */
+
+.lobby {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  gap: 1rem;
+}
+
+.lobby-hint {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-faint);
+}
+
+.room-code {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 1.6rem;
+  letter-spacing: 0.3em;
+  color: var(--gold);
+  padding: 0.5rem 0;
+  user-select: all;
+}
+
+.notice {
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-bright);
+  background: var(--surface-2);
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.notice.info {
+  border-color: #3f6b8a;
+}
+.notice.warn {
+  border-color: #8a6b3f;
+}
+.notice.error {
+  border-color: #8a3f3f;
+}
+
+/* ------------------------------------------------------------- Campo ----- */
+
+.field {
+  display: grid;
+  grid-template-rows: auto auto auto auto;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: linear-gradient(180deg, #171426 0%, #1d1930 50%, #171426 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.field-row-label {
+  width: 4.5rem;
+  font-size: 0.72rem;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  flex-shrink: 0;
+}
+
+.field-zones {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.zone {
+  position: relative;
+  width: 3.4rem;
+  height: 4.6rem;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  background: #16132699;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+.zone:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.zone.has-card {
+  border-style: solid;
+  background: none;
+  padding: 0;
+}
+
+.zone.is-target {
+  border-color: var(--red);
+  box-shadow: 0 0 0 1px var(--red);
+}
+
+.zone.is-targetable {
+  border-color: var(--gold);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 #d4a43755;
+  }
+  50% {
+    box-shadow: 0 0 0 3px #d4a43333;
+  }
+}
+
+/* ------------------------------------------------------------- Carta ----- */
+
+.card {
+  width: 100%;
+  height: 100%;
+  border-radius: 3px;
+  border: 1px solid var(--frame-monster);
+  background: #1a1630;
+  padding: 0.2rem;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.56rem;
+  line-height: 1.15;
+  overflow: hidden;
+  position: relative;
+}
+
+.card.t-monster {
+  border-color: var(--frame-monster);
+}
+.card.t-magic {
+  border-color: var(--frame-magic);
+}
+.card.t-equip {
+  border-color: var(--frame-equip);
+}
+.card.t-trap {
+  border-color: var(--frame-trap);
+}
+.card.t-ritual {
+  border-color: var(--frame-ritual);
+}
+
+.card-name {
+  font-weight: 600;
+  color: #f0ead8;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.card-art {
+  flex: 1;
+  margin: 0.15rem 0;
+  background:
+    repeating-linear-gradient(45deg, #241f3a 0 4px, #1e1a30 4px 8px);
+  border-radius: 2px;
+  display: grid;
+  place-items: center;
+  font-size: 0.55rem;
+  color: var(--text-faint);
+  min-height: 1.2rem;
+}
+
+.card-stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.55rem;
+  color: #c8bfe0;
+  font-variant-numeric: tabular-nums;
+}
+
+.card-back {
+  width: 100%;
+  height: 100%;
+  border-radius: 3px;
+  border: 1px solid var(--border-bright);
+  background:
+    repeating-linear-gradient(45deg, #2a2444 0 5px, #221d38 5px 10px);
+  display: grid;
+  place-items: center;
+  color: var(--text-faint);
+  font-size: 0.6rem;
+}
+
+.card-back.is-defense {
+  border-color: var(--blue);
+}
+
+.card-hand {
+  width: var(--card-w);
+  height: var(--card-h);
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+
+.card-hand:hover {
+  transform: translateY(-4px);
+}
+
+.card-hand.is-selected {
+  transform: translateY(-10px);
+  box-shadow: 0 0 0 2px var(--gold);
+}
+
+.card-hand.is-playable {
+  border-color: var(--green);
+}
+
+.card-hand.is-locked {
+  opacity: 0.75;
+}
+
+/* ------------------------------------------------------------- Mano ------ */
+
+.hand-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-top: 0.75rem;
+}
+
+.hand {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.hand-empty {
+  color: var(--text-faint);
+  font-size: 0.85rem;
+  padding: 1.5rem 0;
+}
+
+/* -------------------------------------------------------------- Paneles -- */
+
+.duel-layout {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.info-bar {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 0.6rem 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.life {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+.life-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--life);
+  font-variant-numeric: tabular-nums;
+}
+
+.life-label {
+  font-size: 0.72rem;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.turn-flag {
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  border: 1px solid var(--border-bright);
+  color: var(--text-dim);
+}
+
+.turn-flag.is-active {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.swords-flag {
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: #6b2f2f;
+  border: 1px solid var(--red);
+  color: #f4c9c6;
+}
+
+.terrain-flag {
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  border: 1px solid var(--border-bright);
+  color: var(--text-dim);
+}
+
+/* ------------------------------------------------------------- Log ------- */
+
+.log {
+  max-height: 9rem;
+  overflow-y: auto;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  display: grid;
+  gap: 0.15rem;
+}
+
+.log-line {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.log-side {
+  color: var(--text-faint);
+  flex-shrink: 0;
+  min-width: 4.5rem;
+}
+
+.chat {
+  display: grid;
+  gap: 0.25rem;
+  max-height: 9rem;
+  overflow-y: auto;
+  font-size: 0.85rem;
+}
+
+.chat-line b {
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.chat-form {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.chat-form input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ----------------------------------------------------------- Resultado --- */
+
+.result {
+  display: grid;
+  gap: 0.5rem;
+  text-align: center;
+  padding: 1.5rem;
+}
+
+.result h2 {
+  font-size: 1.4rem;
+  margin: 0;
+}
+
+.result .win {
+  color: var(--gold);
+}
+
+.result .lose {
+  color: var(--red);
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.stat {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem;
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.stat-label {
+  font-size: 0.68rem;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ------------------------------------------------------------- Pantalla -- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #0d0b16ee;
+  padding: 1rem;
+  z-index: 10;
+}
+
+.overlay-card {
+  background: var(--surface);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  max-width: 32rem;
+  width: 100%;
+  text-align: center;
+}
+
+.overlay-card h2 {
+  margin-top: 0;
+}
+
+/* ------------------------------------------------------- Inspeccion ------ */
+
+.inspect {
+  padding: 0.75rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  min-height: 4.5rem;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.inspect-title {
+  color: var(--gold);
+  font-weight: 600;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+/* --------------------------------------------------------- Adaptable ---- */
+
+@media (max-width: 640px) {
+  :root {
+    --card-w: 72px;
+    --card-h: 100px;
+  }
+
+  .field-row-label {
+    width: 3.2rem;
+    font-size: 0.64rem;
+  }
+
+  .zone {
+    width: 2.6rem;
+    height: 3.6rem;
+  }
+
+  .topbar h1 {
+    font-size: 0.9rem;
+  }
+}
+
+/* Los que no distinguen movimiento, sin animaciones. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

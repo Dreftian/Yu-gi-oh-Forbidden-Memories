@@ -1,0 +1,30 @@
+{
+  "name": "yfm-web",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Yu-Gi-Oh! Forbidden Memories — web version with online PvP matchmaking",
+  "type": "module",
+  "workspaces": [
+    "packages/engine",
+    "packages/server",
+    "packages/client"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build:data": "node tools/build-data.mjs",
+    "dev": "npm run build:data && npm run build --workspace @yfm/engine && concurrently -n server,client -c cyan,magenta \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "npm run dev --workspace @yfm/server",
+    "dev:client": "npm run dev --workspace @yfm/client",
+    "build": "npm run build:data && npm run build --workspace @yfm/engine && npm run build --workspace @yfm/client && npm run build --workspace @yfm/server",
+    "start": "npm run start --workspace @yfm/server",
+    "test": "npm run test --workspace @yfm/engine && npm run test --workspace @yfm/server",
+    "check:match": "node tools/check-match.mjs",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "typescript": "^5.7.2"
+  }
+}

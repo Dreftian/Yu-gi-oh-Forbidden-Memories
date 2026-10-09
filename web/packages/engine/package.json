@@ -1,0 +1,25 @@
+{
+  "name": "@yfm/engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Motor de duelo determinista de Forbidden Memories, sin dependencias de DOM ni de Node.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsc -p tsconfig.test.json && node --test \"dist-test/test/*.test.js\"",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "^5.7.2"
+  }
+}

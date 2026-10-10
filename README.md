@@ -83,6 +83,55 @@ node tools/check-match.mjs ws://127.0.0.1:8787/ws
 Levanta dos clientes, los empareja y comprueba que cada uno ve su mano y que la
 del rival no viaja nunca.
 
+## Desplegar
+
+Son **dos cosas que desplegar por separado**, porque no se pueden Meter en el
+mismo sitio:
+
+| Qué | Dónde | Por qué |
+|---|---|---|
+| Cliente (la web) | **Vercel**, con el `vercel.json` de la raíz | Es un build estático de Vite. Va tal cual. |
+| Servidor de emparejamiento | Un host con **procesos de larga duración** | Es un `http.Server` con un `WebSocketServer` encima. |
+
+### Por qué el servidor no puede ir en Vercel
+
+`DuelServer` levanta un servidor HTTP que **se queda escuchando** y le engancha
+un `WebSocketServer` (`packages/server/src/index.ts`). Una función de Vercel es
+petición y respuesta: nace, te contesta y se apaga. No hay `upgrade`, no hay
+conexiones que duren, y una partida emparejada necesita que el proceso siga
+vivo con los dos jugadores conectados. Por eso el servidor va a un sitio con
+proceso persistente: un VPS, Fly.io, Railway o Render.
+
+Lo que sí funciona **sin servidor** es el grueso del juego: contra la CPU y la
+campaña se resuelven en el navegador (`packages/client/src/ai.ts`), porque el
+motor es puro y el cliente lo ejecuta igual que el servidor. Solo el emparejamiento
+en línea necesita el proceso.
+
+### El cliente en Vercel
+
+El `vercel.json` de la raíz deja el build sin depender de los ajustes del panel:
+
+- **Root Directory**: la raíz del repositorio (`.`), **no** `packages/client`.
+  Vercel necesita el repo entero para resolver los `workspaces` de npm.
+- **Install Command**: `npm install`
+- **Build Command**: `npm run build --workspace @yfm/client`
+- **Output Directory**: `packages/client/dist`
+
+Esos son los valores que ya están en `vercel.json`, así que basta con apuntar
+el Root Directory a la raíz y Vercel lee el resto de ahí.
+
+### El emparejamiento en línea
+
+1. Despliega `packages/server` en el host persistente, con `npm start` y la
+   variable de puerto que use el sitio (por defecto 8787).
+2. En el proyecto de Vercel, define **`VITE_SERVER_URL`** con la URL del
+   servidor, en `wss://` si el del servidor es `https://`.
+3. Redespliega Vercel. La variable se lee **al compilar**, no en runtime
+   (`packages/client/src/net.ts`), así que cambiarla exige otro build.
+
+Sin `VITE_SERVER_URL` el cliente asume que el servidor está en su mismo origen,
+que es lo que hace el proxy de Vite en desarrollo.
+
 ## Cómo está organizado
 
 ```

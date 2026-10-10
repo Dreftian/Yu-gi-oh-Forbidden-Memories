@@ -52,10 +52,12 @@ Si el checkout del decompilado no está donde el generador espera, se le dice:
 node tools/build-data.mjs --decomp ./Yu-Gi-Oh-Forbidden-Memories-Recompiled-master
 ```
 
-El catálogo generado (`packages/engine/src/data/cards.generated.ts`) **está en el
-repositorio** a propósito: son 722 cartas con sus estadísticas y su texto, unos
-400 KB, y sin él el clon no compila ni tiene con qué jugar. `npm install`
-compila el motor, así que no hace falta ningún paso previo.
+El catálogo generado (`packages/engine/src/data/*.generated.ts`: las cartas, la
+tabla de dispatch de efectos y la de duelistas) **está en el repositorio** a
+propósito: son 722 cartas con sus estadísticas y su texto más las tablas que el
+motor va a necesitar, medio megabyte en total, y sin ellos el clon no compila ni
+tiene con qué jugar. `npm install` compila el motor, así que no hace falta ningún
+paso previo.
 
 Para regenerarlo cuando cambien los datos del decompilado:
 
@@ -79,7 +81,8 @@ del rival no viaja nunca.
 ```
 .
 ├── tools/
-│   ├── build-data.mjs      genera el catálogo desde el decompilado
+│   ├── build-data.mjs      genera las tres tablas de packages/engine/src/data
+│   │                       desde el decompilado
 │   └── check-match.mjs     comprobación manual del emparejamiento
 └── packages/
     ├── engine/             motor de duelo. Puro: sin DOM, sin Node

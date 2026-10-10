@@ -1,7 +1,7 @@
 // Generado por tools/build-data.mjs. No editar a mano.
 // Fuente: notes/card-catalog.csv, languages/en-eu.txt,
 //         notes/research/fusion-and-drop-tables/{fusions,equips}.csv
-// 722 cartas (722 con texto), 578indices de fusion, 34 equips.
+// 722 cartas (722 con texto), 25131 recetas de fusion en 578 indices, 4041 pares de equip en 34 tablas.
 
 import type { CardData } from '../types.js';
 

@@ -6,3 +6,25 @@ Yu-Gi-Oh-Forbidden-Memories-Recompiled-master/
 # dependencia opcional: el generador la usa si el decompilado esta disponible
 # en esa carpeta hermana. No hace falta tenerla para compilar ni para jugar.
 Yu-Gi-Oh-Forbidden-Memories-Recompiled/
+
+# Dependencias
+node_modules/
+
+# Compilacion
+dist/
+dist-test/
+*.tsbuildinfo
+
+# Entorno
+.env
+.env.local
+
+# Editor y sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Registros
+*.log
+npm-debug.log*

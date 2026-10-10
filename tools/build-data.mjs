@@ -21,8 +21,8 @@ import fs from 'node:fs';
 const require = createRequire(import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-/** Raiz del proyecto web. */
-const WEB_ROOT = path.resolve(here, '..');
+/** Raiz del repositorio: aqui viven `packages/` y `tools/`. */
+const REPO_ROOT = path.resolve(here, '..');
 
 /** Candidatos para localizar el checkout del decompilado. */
 function resolveDepRoot() {
@@ -33,11 +33,14 @@ function resolveDepRoot() {
   const env = process.env.YFM_DECOMP_ROOT;
   if (env) return path.resolve(env);
 
+  // El decompilado es un checkout hermano dentro de este mismo repositorio, asi
+  // que se mira primero dentro de la raiz y despues un nivel por encima, por si
+  // alguien lo clonó aparte al lado.
   const candidates = [
-    path.resolve(WEB_ROOT, '..', 'Yu-Gi-Oh-Forbidden-Memories-Recompiled-master'),
-    path.resolve(WEB_ROOT, '..', 'Yu-Gi-Oh-Forbidden-Memories-Recompiled'),
-    path.resolve(WEB_ROOT, '..'),
-    WEB_ROOT,
+    path.join(REPO_ROOT, 'Yu-Gi-Oh-Forbidden-Memories-Recompiled-master'),
+    path.join(REPO_ROOT, 'Yu-Gi-Oh-Forbidden-Memories-Recompiled'),
+    REPO_ROOT,
+    path.resolve(REPO_ROOT, '..'),
   ];
   for (const candidate of candidates) {
     if (fs.existsSync(path.join(candidate, 'notes', 'card-catalog.csv'))) return candidate;
@@ -432,7 +435,7 @@ export const EQUIPS: Readonly<Record<number, readonly number[]>> = ${serialize(e
 `;
 
 const outPath = path.join(
-  WEB_ROOT,
+  REPO_ROOT,
   'packages',
   'engine',
   'src',
@@ -442,7 +445,7 @@ const outPath = path.join(
 fs.mkdirSync(path.dirname(outPath), { recursive: true });
 fs.writeFileSync(outPath, out, 'utf8');
 
-console.log(`escrito ${path.relative(WEB_ROOT, outPath)}`);
+console.log(`escrito ${path.relative(REPO_ROOT, outPath)}`);
 console.log(
   `  cartas: ${cards.length} (${withText} con texto, ${cards.length - withText} sin)`,
 );

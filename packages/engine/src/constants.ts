@@ -234,120 +234,306 @@ export const REVERSE_TRAP_ID = 689;
 export const RITUAL_TRIBUTE_COUNT = 3;
 
 /**
- * Recetas de ritual.
+ * Un tributo de ritual.
  *
- * La tabla del retail vive en el disco, en `0x801799D8`, con 24 registros de
- * `{ritual, tributo, tributo, tributo, resultado}`. Este repositorio no
- * incluye el disco, asi que las recetas de aqui estan transcritas del texto de
- * cada carta (`languages/en-eu.txt`, ids `D399`..`D3BC`) mas las tres recetas
- * que el propio repo documenta con certeza. Donde el texto de la carta nombra
- * monstruos concretos estan por id; donde nombra tipos o rasgos, como
- * "monstruo con cuernos", el matcher es por tipo.
+ * Hay dos formas y la diferencia importa, porque solo una es el retail.
  *
- * Cuando aparezca la tabla del disco, esto se sustituye por ella sin tocar el
- * motor: la forma de los datos ya es la que el motor lee.
+ * `exact` es el modelo del retail: la tabla `gDuel_awRitualData` son 24 registros
+ * de cinco halfwords `[ritual, tributo1, tributo2, tributo3, resultado]`, y
+ * `Duel_CheckRitual` compara `card->card_id == p[j]` y nada mas
+ * (`src/game/duel_check_ritual.c:413-491`). No hay tipos, ni umbrales de ATK, ni
+ * "el de mayor defensa": un tributo del retail es un id de carta.
+ *
+ * `approximate` NO existe en el retail. Solo esta aqui porque la tabla de 24
+ * recetas vive en el disco (`0x801799D8`, offset `+0x34800`, 0x800 bytes) y este
+ * repositorio no incluye el disco, asi que de 21 de las 24 recetas no se sabe
+ * siquiera que ids pedian. Estas heuristicas traducen el texto de la carta a una
+ * condicion aproximada: son jugables, pero no son el retail y por eso llevan la
+ * etiqueta `approximate` puesta, para que nadie las lea como el comportamiento
+ * original.
+ */
+export type RitualTribute =
+  | { readonly kind: 'exact'; readonly cardId: number }
+  | {
+      readonly kind: 'approximate';
+      /** Tipo de monstruo, como el texto de la carta lo nombra. */
+      readonly type?: number;
+      /** ATK efectivo minimo, para "un monstruo con ATK 2000 o mas". */
+      readonly minAttack?: number;
+      /** DEF efectiva mayor que el ATK, para "el de mayor defensa". */
+      readonly defenseGreaterThanAttack?: boolean;
+    };
+
+/**
+ * Una receta de ritual: `ritual -> [tres tributos] -> resultado`.
+ *
+ * `confirmed` dice si los ids salen de una fuente verificada del decompilado en
+ * vez de del texto de la carta. De las 24 recetas solo 3 la tienen
+ * (`RITUAL_RECIPES`). Una receta confirmada que aun lleve un tributo
+ * aproximado esta marcada como tal en su entrada: es el caso de Dark Magic
+ * Ritual (721), del que solo se conoce el resultado.
  */
 export interface RitualRecipe {
   readonly ritualId: number;
   readonly resultId: number;
+  readonly confirmed: boolean;
   readonly tributes: readonly RitualTribute[];
 }
 
 /**
- * Un tributo de ritual. `cardId` fija una carta concreta; `type` acepta
- * cualquier monstruo de ese tipo; `minAttack`/`defenseGreaterThanAttack`
- * cubren los que el texto describe por rasgos ("el de mayor defensa", "con
- * cuernos").
+ * Recetas de ritual.
+ *
+ * La tabla del retail vive en el disco (`0x801799D8`, 24 registros de 5
+ * halfwords), asi que aqui no esta. Lo que hay son tres recetas confirmadas y 21
+ * aproximadas:
+ *
+ * - 670, 675 y 721 son las unicas con algo verificado. De 670 y 675 sabemos los
+ *   tres ids exactos; de 721 (`notes/research/the-game.md`, seccion 5.7) solo el
+ *   resultado, que es 722.
+ * - Las otras 21 no se pueden cerrar aqui: sus ids estan en el disco, que este
+ *   repositorio no incluye. Sus tributos son la aproximacion por tipo y por ATK
+ *   que salia del texto de la carta, marcada como tal.
+ *
+ * Cuando aparezca la tabla del disco, esto se sustituye por ella sin tocar el
+ * motor: la forma de los datos ya es la que el motor lee, y basta con poner
+ * `kind: 'exact'` y `confirmed: true` en cada registro.
  */
-export interface RitualTribute {
-  readonly cardId?: number;
-  readonly type?: number;
-  readonly minAttack?: number;
-  readonly minDefense?: number;
-  readonly defenseGreaterThanAttack?: boolean;
-  readonly level?: number;
-  readonly count?: number;
-}
-
-/** Recetas de ritual, indexadas por id de carta ritual. */
 export const RITUAL_RECIPES: readonly RitualRecipe[] = [
   // 665 - "Sacrifices the monster with the highest defense rating and summons
   // Shield." El texto no fija un numero de tributos, asi que la retail pide
   // tres y basta con que el mas defensivo este entre ellos.
-  { ritualId: 665, resultId: 362, tributes: [{ defenseGreaterThanAttack: true }, {}, {}] },
+  {
+    ritualId: 665,
+    resultId: 362,
+    confirmed: false,
+    tributes: [
+      { kind: 'approximate', defenseGreaterThanAttack: true },
+      { kind: 'approximate' },
+      { kind: 'approximate' },
+    ],
+  },
 
   // 666 - "Beast-Warrior, Dragon, and Pyro monsters to summon Yamadron."
-  { ritualId: 666, resultId: 357, tributes: [{ type: 4 }, { type: 0 }, { type: 17 }] },
+  {
+    ritualId: 666,
+    resultId: 357,
+    confirmed: false,
+    tributes: [{ kind: 'approximate', type: 4 }, { kind: 'approximate', type: 0 }, { kind: 'approximate', type: 17 }],
+  },
 
   // 667 - "Kazejin, Suijin, and Sanga of the Thunder to summon Gate Guardian."
-  { ritualId: 667, resultId: 374, tributes: [{ cardId: 372 }, { cardId: 373 }, { cardId: 371 }] },
+  // Los tres ids salen del texto de la carta, no de la tabla del disco.
+  {
+    ritualId: 667,
+    resultId: 374,
+    confirmed: false,
+    tributes: [
+      { kind: 'exact', cardId: 372 },
+      { kind: 'exact', cardId: 373 },
+      { kind: 'exact', cardId: 371 },
+    ],
+  },
 
-  // 670 - Confirmada por `notes/research/the-game.md`: Beaver Warrior + Gaia the
-  // Fierce Knight + Kuriboh -> Black Luster Soldier.
-  { ritualId: 670, resultId: 364, tributes: [{ cardId: 27 }, { cardId: 38 }, { cardId: 58 }] },
+  // 670 - Confirmada: Beaver Warrior + Gaia the Fierce Knight + Kuriboh ->
+  // Black Luster Soldier (`tests/pc/duel_rules_guest_test.c:32-33`).
+  {
+    ritualId: 670,
+    resultId: 364,
+    confirmed: true,
+    tributes: [
+      { kind: 'exact', cardId: 27 },
+      { kind: 'exact', cardId: 38 },
+      { kind: 'exact', cardId: 58 },
+    ],
+  },
 
   // 671 - "Ceremony conducted to summon Zera."
-  { ritualId: 671, resultId: 360, tributes: [{ type: 7 }, { type: 7 }, { type: 7 }] },
+  {
+    ritualId: 671,
+    resultId: 360,
+    confirmed: false,
+    tributes: [{ kind: 'approximate', type: 7 }, { kind: 'approximate', type: 7 }, { kind: 'approximate', type: 7 }],
+  },
 
   // 673 - "Ceremony conducted to summon War Lion."
-  { ritualId: 673, resultId: 356, tributes: [{ type: 5 }, { type: 5 }, { type: 5 }] },
+  {
+    ritualId: 673,
+    resultId: 356,
+    confirmed: false,
+    tributes: [{ kind: 'approximate', type: 5 }, { kind: 'approximate', type: 5 }, { kind: 'approximate', type: 5 }],
+  },
 
   // 674 - "Ceremony conducted to summon Fiend's Mirror."
-  { ritualId: 674, resultId: 365, tributes: [{ type: 7 }, { type: 7 }, { type: 7 }] },
+  {
+    ritualId: 674,
+    resultId: 365,
+    confirmed: false,
+    tributes: [{ kind: 'approximate', type: 7 }, { kind: 'approximate', type: 7 }, { kind: 'approximate', type: 7 }],
+  },
 
-  // 675 - "Sacrifice three Blue-eyes to summon Ultimate Dragon." Confirmada por
-  // `notes/research/the-game.md`.
-  { ritualId: 675, resultId: 380, tributes: [{ cardId: 1 }, { cardId: 1 }, { cardId: 1 }] },
+  // 675 - Confirmada: tres Blue-eyes -> Blue-eyes Ultimate Dragon
+  // (`tests/pc/ritual_tributes_runtime.py`, que deja 675 tal y como esta en el
+  // disco). Los tres tributos son el mismo id, y es legal: cada tributo toma una
+  // carta distinta del campo.
+  {
+    ritualId: 675,
+    resultId: 380,
+    confirmed: true,
+    tributes: [
+      { kind: 'exact', cardId: 1 },
+      { kind: 'exact', cardId: 1 },
+      { kind: 'exact', cardId: 1 },
+    ],
+  },
 
   // 676 - "Sacrifice Dancer and Warrior to summon Performance of Sword."
-  { ritualId: 676, resultId: 701, tributes: [{ type: 3 }, { type: 3 }, { type: 3 }] },
+  {
+    ritualId: 676,
+    resultId: 701,
+    confirmed: false,
+    tributes: [{ kind: 'approximate', type: 3 }, { kind: 'approximate', type: 3 }, { kind: 'approximate', type: 3 }],
+  },
 
   // 677 - "A card with the ingredients for making a delicious hamburger."
-  { ritualId: 677, resultId: 702, tributes: [{ type: 3 }, { type: 3 }, { type: 3 }] },
+  {
+    ritualId: 677,
+    resultId: 702,
+    confirmed: false,
+    tributes: [{ kind: 'approximate', type: 3 }, { kind: 'approximate', type: 3 }, { kind: 'approximate', type: 3 }],
+  },
 
   // 678 - "Sacrifice Beast-Warrior and Golem to summon Sengenjin."
-  { ritualId: 678, resultId: 703, tributes: [{ type: 4 }, { type: 18 }, { type: 18 }] },
+  {
+    ritualId: 678,
+    resultId: 703,
+    confirmed: false,
+    tributes: [{ kind: 'approximate', type: 4 }, { kind: 'approximate', type: 18 }, { kind: 'approximate', type: 18 }],
+  },
 
   // 679 - "Sacrifice Warrior and Scythe Wielder to summon Skull Guardian."
-  { ritualId: 679, resultId: 704, tributes: [{ type: 3 }, { type: 3 }, { type: 3 }] },
+  {
+    ritualId: 679,
+    resultId: 704,
+    confirmed: false,
+    tributes: [{ kind: 'approximate', type: 3 }, { kind: 'approximate', type: 3 }, { kind: 'approximate', type: 3 }],
+  },
 
   // 680 - "Sacrifice a horned monster to summon Tri-Horned Dragon."
-  { ritualId: 680, resultId: 705, tributes: [{ minAttack: 2000 }, { minAttack: 2000 }, { minAttack: 2000 }] },
+  {
+    ritualId: 680,
+    resultId: 705,
+    confirmed: false,
+    tributes: [
+      { kind: 'approximate', minAttack: 2000 },
+      { kind: 'approximate', minAttack: 2000 },
+      { kind: 'approximate', minAttack: 2000 },
+    ],
+  },
 
   // 691 - "Select a specific monster for sacrifice and summon Serpent Night
   // Dragon."
-  { ritualId: 691, resultId: 706, tributes: [{ type: 0 }, { type: 0 }, { type: 0 }] },
+  {
+    ritualId: 691,
+    resultId: 706,
+    confirmed: false,
+    tributes: [{ kind: 'approximate', type: 0 }, { kind: 'approximate', type: 0 }, { kind: 'approximate', type: 0 }],
+  },
 
   // 692 - "Sacrifice crab and turtle to summon Crab Turtle."
-  { ritualId: 692, resultId: 710, tributes: [{ type: 12 }, { type: 16 }, { type: 16 }] },
+  {
+    ritualId: 692,
+    resultId: 710,
+    confirmed: false,
+    tributes: [{ kind: 'approximate', type: 12 }, { kind: 'approximate', type: 16 }, { kind: 'approximate', type: 16 }],
+  },
 
   // 693 - "Sacrifice a masked one to summon a new mask."
-  { ritualId: 693, resultId: 720, tributes: [{ type: 1 }, { type: 1 }, { type: 1 }] },
+  {
+    ritualId: 693,
+    resultId: 720,
+    confirmed: false,
+    tributes: [{ kind: 'approximate', type: 1 }, { kind: 'approximate', type: 1 }, { kind: 'approximate', type: 1 }],
+  },
 
   // 694 - "Sacrifice 3 Fiend monsters ... Resurrection of Chakra."
-  { ritualId: 694, resultId: 709, tributes: [{ type: 7 }, { type: 7 }, { type: 7 }] },
+  {
+    ritualId: 694,
+    resultId: 709,
+    confirmed: false,
+    tributes: [{ kind: 'approximate', type: 7 }, { kind: 'approximate', type: 7 }, { kind: 'approximate', type: 7 }],
+  },
 
   // 695 - "Sacrifice Puppeteer and Machine monsters to summon the Puppet."
-  { ritualId: 695, resultId: 715, tributes: [{ cardId: 166 }, { type: 14 }, { type: 14 }] },
+  {
+    ritualId: 695,
+    resultId: 715,
+    confirmed: false,
+    tributes: [
+      { kind: 'exact', cardId: 166 },
+      { kind: 'approximate', type: 14 },
+      { kind: 'approximate', type: 14 },
+    ],
+  },
 
   // 696 - "Sacrifice the stag beetle and beetle to summon Javelin Beetle."
-  { ritualId: 696, resultId: 717, tributes: [{ type: 9 }, { type: 9 }, { type: 9 }] },
+  {
+    ritualId: 696,
+    resultId: 717,
+    confirmed: false,
+    tributes: [{ kind: 'approximate', type: 9 }, { kind: 'approximate', type: 9 }, { kind: 'approximate', type: 9 }],
+  },
 
   // 697 - "Sacrifice the Ashura's Arm and Sword-wielder."
-  { ritualId: 697, resultId: 716, tributes: [{ type: 3 }, { type: 3 }, { type: 3 }] },
+  {
+    ritualId: 697,
+    resultId: 716,
+    confirmed: false,
+    tributes: [{ kind: 'approximate', type: 3 }, { kind: 'approximate', type: 3 }, { kind: 'approximate', type: 3 }],
+  },
 
   // 698 - "Sacrifice a normal Queen to summon Cosmo Queen."
-  { ritualId: 698, resultId: 708, tributes: [{ type: 1 }, { type: 1 }, { type: 1 }] },
+  {
+    ritualId: 698,
+    resultId: 708,
+    confirmed: false,
+    tributes: [{ kind: 'approximate', type: 1 }, { kind: 'approximate', type: 1 }, { kind: 'approximate', type: 1 }],
+  },
 
   // 699 - "Sacrifice Temple and Cockroach to summon Dokurorider."
-  { ritualId: 699, resultId: 719, tributes: [{ cardId: 146 }, { type: 9 }, { type: 9 }] },
+  {
+    ritualId: 699,
+    resultId: 719,
+    confirmed: false,
+    tributes: [
+      { kind: 'exact', cardId: 146 },
+      { kind: 'approximate', type: 9 },
+      { kind: 'approximate', type: 9 },
+    ],
+  },
 
   // 700 - "Sacrifice Horn and Machine Fish to summon Sea Fortress."
-  { ritualId: 700, resultId: 718, tributes: [{ minAttack: 1000 }, { type: 14 }, { type: 12 }] },
+  {
+    ritualId: 700,
+    resultId: 718,
+    confirmed: false,
+    tributes: [
+      { kind: 'approximate', minAttack: 1000 },
+      { kind: 'approximate', type: 14 },
+      { kind: 'approximate', type: 12 },
+    ],
+  },
 
-  // 721 - "Dark Magic Ritual" es la receta 24; `notes/research/the-game.md`
-  // la documenta como la que hace Magician of Black Chaos.
-  { ritualId: 721, resultId: 722, tributes: [{ type: 1 }, { type: 1 }, { type: 1 }] },
+  // 721 - Dark Magic Ritual, la receta 24, hace Magician of Black Chaos (722).
+  // El par ritual -> resultado esta confirmado (`notes/research/the-game.md`,
+  // seccion 5.7), pero los tres ids de tributo estan en el disco: lo que hay
+  // aqui es la aproximacion por tipo que da el texto de la carta. Es la unica
+  // receta confirmada con un tributo aproximado, y por eso lo dice.
+  {
+    ritualId: 721,
+    resultId: 722,
+    confirmed: true,
+    tributes: [{ kind: 'approximate', type: 1 }, { kind: 'approximate', type: 1 }, { kind: 'approximate', type: 1 }],
+  },
 ];
 
 /** Busca la receta de un ritual, si existe. */
@@ -375,16 +561,35 @@ export const CURSEBREAKER_ID = 655;
 export const HARPIES_FEATHER_DUSTER_ID = 672;
 
 /**
- * Nota de fidelidad: `Dark-piercing Light` recorre los slots 5..14 del grid,
- * o sea las dos filas de monstruos, y revela tambien las propias. Es un
- * comportamiento del retail, no un error.
+ * Las siete filas del mazo inicial, como en `notes/starter-deck-pools.md`.
+ *
+ * Cada fila dice cuantas cartas saca de ella y que cartas son (`minTotal`/
+ * `maxTotal` para las cuatro de monstruos, que el retail etiqueta por ATK+DEF;
+ * `cardIds` y `cardType` para las tres de no-monstruos). Los CONTADORES son los
+ * del retail; los PESOS no son obtenibles y por eso la tabla de pesos la arma
+ * `catalog.ts` de forma uniforme (`starterRowWeights`).
  */
-export const DARK_PIERCING_REVEALS_OWN_FIELD = true;
+export type StarterDeckRow =
+  | { readonly drawCount: number; readonly minTotal: number; readonly maxTotal: number }
+  | { readonly drawCount: number; readonly cardIds: readonly number[] }
+  | { readonly drawCount: number; readonly cardType: number };
 
-/** Baraja inicial de la campana, por rangos de ATK+DEF. */
-export const STARTER_DECK_ROWS = [
-  { count: 16, minTotal: 450, maxTotal: 1050 },
-  { count: 16, minTotal: 1100, maxTotal: 1550 },
-  { count: 4, minTotal: 1600, maxTotal: 2050 },
-  { count: 1, minTotal: 2100, maxTotal: 2450 },
-] as const;
+export const STARTER_DECK_ROWS: readonly StarterDeckRow[] = [
+  { drawCount: 16, minTotal: 450, maxTotal: 1050 },
+  { drawCount: 16, minTotal: 1100, maxTotal: 1550 },
+  { drawCount: 4, minTotal: 1600, maxTotal: 2050 },
+  { drawCount: 1, minTotal: 2100, maxTotal: 2450 },
+  // Dark Hole y Raigeki.
+  { drawCount: 1, cardIds: [DARK_HOLE_ID, RAIGEKI_ID] },
+  // Los seis terrenos, 330-335.
+  { drawCount: 1, cardIds: [330, 331, 332, 333, 334, 335] },
+  // Los equips del catalogo.
+  { drawCount: 1, cardType: CARD_TYPE_EQUIP },
+];
+
+/**
+ * `STARTER_DECK_WEIGHT_SCAN_COUNT` en `src/game/card_constants.h`: el retail
+ * recorre los indices 0..719 de una fila de 722 pesos y se salta los dos
+ * ultimos, asi que 721 y 722 no pueden salir de un mazo inicial.
+ */
+export const STARTER_DECK_WEIGHT_SCAN_COUNT = 720;

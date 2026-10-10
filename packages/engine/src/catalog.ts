@@ -19,7 +19,11 @@ import {
   CARD_TYPE_FIRST_NON_MONSTER,
   CARD_TYPE_MAGIC,
   CARD_TYPE_TRAP,
+  DECK_CARD_COPY_LIMIT,
+  DECK_SIZE,
   EQUIP_LEVEL_BONUS,
+  EXODIA_PIECE_COPY_LIMIT,
+  EXODIA_PIECE_IDS,
   GUARDIAN_FIRST_CYCLE_COUNT,
   GUARDIAN_FIRST_CYCLE_START,
   GUARDIAN_SECOND_CYCLE_COUNT,
@@ -27,14 +31,21 @@ import {
   GUARDIAN_STAR_BONUS,
   MONSTER_TYPE_COUNT,
   STARTER_DECK_ROWS,
+  STARTER_DECK_WEIGHT_SCAN_COUNT,
   TERRAIN_BOOST,
   TERRAIN_STAT_ADJUSTMENT,
   equipBonus,
 } from './constants.js';
+import type { StarterDeckRow } from './constants.js';
+import { DUELISTS } from './data/duelists.generated.js';
+import type { DuelistData, DropEntry } from './data/duelists.generated.js';
+import { THRESHOLD_TOTAL } from './rng.js';
 import type { CardData, GuardianStar } from './types.js';
 import type { Rng } from './rng.js';
 
 export { ATTRIBUTE_NAMES, STAR_NAMES, STAR_IDS, TYPE_IDS, TYPE_NAMES };
+export { DUELISTS };
+export type { DuelistData, DropEntry };
 
 /** Cuantas cartas tiene el catalogo. */
 export const CARD_COUNT = CARDS.length;
@@ -255,64 +266,256 @@ export const BASE_EQUIP_BONUS = EQUIP_LEVEL_BONUS;
 /* ------------------------------------------------------ Mazo inicial ------- */
 
 /**
- * Las 40 cartas de la campana inicial, agrupadas como en
- * `notes/starter-deck-pools.md`.
+ * Las 40 cartas de la campana inicial.
  *
- * El retail no sortea una carta entre todas, sino que recorre siete filas
- * ponderadas: 16 monstruos de ATK+DEF 450-1050, 16 de 1100-1550, 4 de
- * 1600-2050, 1 de 2100-2450, 1 de Dark Hole o Raigeki, 1 de los seis
- * terrenos y 1 de los 28 equips. Las cuentas suman 40 y ninguna carta sale
- * en dos filas.
+ * El retail recorre siete filas ponderadas: 16 monstruos de ATK+DEF 450-1050, 16
+ * de 1100-1550, 4 de 1600-2050, 1 de 2100-2450, 1 de Dark Hole o Raigeki, 1 de
+ * los seis terrenos y 1 de los equips. Los contadores y las filas estan en
+ * `STARTER_DECK_ROWS`; los PESOS no.
+ *
+ * El algoritmo es el de `NameEntry_BuildStarterDeck`
+ * (`src/overlays/password/name_entry_main.c:58-111`, `notes/rng.md` lineas
+ * 237-258): cada intento saca un `threshold()`, y por CADA peso que examina
+ * consume un valor mas y lo tira. Elegir la carta de indice `i` cuesta por tanto
+ * `i + 2` valores. Si la carta elegida llega a su cuarta copia se descarta el
+ * intento entero y se repite; el numero de cartas que faltan no baja.
+ *
+ * Una diferencia nuestra, y es a proposito: el retail comprueba solo
+ * `DECK_CARD_COPY_LIMIT` (3) y por eso su mazo inicial puede llevar dos piezas
+ * de Exodia, que su propio constructor de mazos no aceptaria
+ * (`notes/starter-deck.md`, seccion "Limits"). Aqui el reintento usa el limite
+ * legal de cada carta (`copyLimitFor`), que es 1 para las piezas de Exodia, para
+ * que el mazo generado siempre pase `validateDeck`.
  *
  * Recibe el generador del motor para que el mazo dependa de la semilla de la
  * partida y no de `Math.random`.
  */
 export function starterDeckCardIds(rng: Rng): number[] {
-  const chosen: number[] = [];
-  const monsters = CARDS.filter((c) => isMonster(c));
+  const counts = new Map<number, number>();
+  const deck: number[] = [];
 
   for (const row of STARTER_DECK_ROWS) {
-    const pool = monsters.filter((c) => {
-      const total = c.attack + c.defense;
-      return total >= row.minTotal && total <= row.maxTotal;
-    });
-    chosen.push(...sampleWithoutRepeats(pool, row.count, chosen, rng));
+    const weights = starterRowWeights(starterPool(row));
+    let remaining = row.drawCount;
+
+    do {
+      const threshold = rng.threshold();
+      const picked = weightedScan(rng, weights, threshold);
+
+      // Un umbral que ningun peso alcanza no anade carta, pero el intento
+      // cuenta: es lo que hace el retail con una fila editada.
+      if (picked >= 0) {
+        const cardId = picked + 1;
+        if ((counts.get(cardId) ?? 0) >= copyLimitFor(cardId)) {
+          remaining += 1;
+        } else {
+          counts.set(cardId, (counts.get(cardId) ?? 0) + 1);
+          deck.push(cardId);
+        }
+      }
+      remaining -= 1;
+    } while (remaining !== 0);
   }
 
-  // La fila de Dark Hole o Raigeki, la de los seis terrenos y la de los equips.
-  chosen.push(rng.pick(DARK_HOLE_RAIGEKI_IDS));
-  chosen.push(rng.pick(TERRAIN_CARD_IDS_LIST));
-  chosen.push(rng.pick(CARDS.filter((c) => c.type === 23).map((c) => c.id)));
-
-  return chosen;
+  return deck;
 }
 
-/** Dark Hole (336) y Raigeki (337), la quinta fila de la campana. */
-const DARK_HOLE_RAIGEKI_IDS: readonly number[] = [336, 337];
+/**
+ * Recorre una fila de pesos como el retail y devuelve el indice elegido.
+ *
+ * Descarta un valor del generador ANTES de sumar cada peso, tambien el que cierra
+ * el umbral, y para al llegar a `STARTER_DECK_WEIGHT_SCAN_COUNT`. Devuelve -1 si
+ * el umbral no lo alcanza ninguno de los pesos examinados.
+ */
+function weightedScan(rng: Rng, weights: readonly number[], threshold: number): number {
+  let accumulated = 0;
+  for (let index = 0; index < STARTER_DECK_WEIGHT_SCAN_COUNT; index += 1) {
+    rng.next();
+    accumulated += weights[index] ?? 0;
+    if (accumulated >= threshold) return index;
+  }
+  return -1;
+}
 
-/** Las seis cartas de terreno, 330-335, la sexta fila. */
-const TERRAIN_CARD_IDS_LIST: readonly number[] = [330, 331, 332, 333, 334, 335];
+/** Las cartas de una fila del mazo inicial, en orden de id. */
+function starterPool(row: StarterDeckRow): number[] {
+  if ('cardIds' in row) return [...row.cardIds];
+  if ('cardType' in row) return cardIdsOfType(row.cardType);
+  return CARDS.filter((c) => {
+    if (!isMonster(c)) return false;
+    const total = c.attack + c.defense;
+    return total >= row.minTotal && total <= row.maxTotal;
+  }).map((c) => c.id);
+}
 
 /**
- * Toma `count` elementos de `pool` sin repetir ninguno de los ids ya usados:
- * es el comportamiento de reintento del retail cuando una carta ya tiene tres
- * copias.
+ * Los pesos de una fila del mazo inicial, indexados POR ID DE CARTA.
+ *
+ * Indexar por id y no por posicion en la fila es lo que hace el retail, y es lo
+ * que hace que el gasto de numeros coincida: el indice `i` de la fila es el
+ * `card_id i + 1`, asi que elegir la carta `n` examina `n` pesos.
+ *
+ * Los pesos de verdad viven solo en el disco (`0xF92BD4` y `0xFBDBD4`, dos
+ * copias byte a byte de 0x2808 bytes con siete registros de 0x5B8), que este
+ * repositorio no incluye, asi que no son obtenibles. Lo que se conserva del
+ * retail es el total: cada fila suma `DUEL_DROP_WEIGHT_TOTAL` (2048), el mismo
+ * denominador del umbral, y se reparte lo mas uniformemente posible (metodo del
+ * resto mayor). La tabla de FILAS y sus contadores si son los del retail
+ * (`STARTER_DECK_ROWS`); la de pesos es nuestra.
  */
-function sampleWithoutRepeats(
-  pool: readonly CardData[],
-  count: number,
-  used: readonly number[],
-  rng: Rng,
-): number[] {
-  const working = pool.filter((c) => !used.includes(c.id));
-  const picked: number[] = [];
+function starterRowWeights(pool: readonly number[]): number[] {
+  const weights = new Array<number>(STARTER_DECK_WEIGHT_SCAN_COUNT).fill(0);
+  if (pool.length === 0) return weights;
 
-  for (let i = 0; i < count && working.length > 0; i += 1) {
-    const index = rng.interval(working.length);
-    const [chosen] = working.splice(index, 1);
-    if (chosen !== undefined) picked.push(chosen.id);
+  const base = Math.floor(THRESHOLD_TOTAL / pool.length);
+  let leftOver = THRESHOLD_TOTAL - base * pool.length;
+  for (const cardId of pool) {
+    if (cardId < 1 || cardId > STARTER_DECK_WEIGHT_SCAN_COUNT) continue;
+    const extra = leftOver > 0 ? 1 : 0;
+    weights[cardId - 1] = base + extra;
+    leftOver -= extra;
   }
-  return picked;
+  return weights;
+}
+
+/**
+ * Cuantas copias de una carta admite un mazo: tres, y una sola para las cinco
+ * piezas de Exodia (`EXODIA_PIECE_COPY_LIMIT`), que es lo que `validateDeck`
+ * exige.
+ */
+function copyLimitFor(cardId: number): number {
+  return EXODIA_PIECE_IDS.includes(cardId as 17) ? EXODIA_PIECE_COPY_LIMIT : DECK_CARD_COPY_LIMIT;
+}
+
+/* ------------------------------------------------------ Duelistas ---------- */
+
+/**
+ * El duelista de un id, o `undefined` si no existe.
+ *
+ * El id 0 es real (`"(unused; copy of Simon Muran)"`) y sale tambien, porque el
+ * retail lo tiene guardado en la tabla. No hay ids negativos ni por encima de 39.
+ */
+export function duelistById(id: number): DuelistData | undefined {
+  return DUELISTS.find((duelist) => duelist.id === id);
+}
+
+/**
+ * Cuantos intentos se dan para sacar UNA carta del pool de un duelista antes de
+ * renunciar al sorteo.
+ *
+ * Es un tope de seguridad, no una parte del retail, y tiene que ser GENEROSO
+ * porque hay pools muy sesgados. En el de Teana (id 2) siete cartas se llevan
+ * 2020 de los 2048 puntos: en cuanto esas siete llegan a sus tres copias, el
+ * 98,6% de los sorteos cae en una carta ya agotada y se rechaza, asi que sacarla
+ * desde el principio son ~70 intentos de media. Con 16 el sorteo fallaria el 80%
+ * de las veces y el mazo se llenaria con el relleno de emergencia, que no es un
+ * sorteo. Con 512 la probabilidad de agotarlo baja al 0,1% por carta.
+ *
+ * Existe porque esta funcion corre dentro de un `while` de la partida y un bucle
+ * infinito ahi cuelga el juego entero. Los 40 pools de la tabla dan para 40 cartas
+ * de sobra (el mas pequeno, el de Teana, tiene 21 cartas y una capacidad de 63),
+ * asi que el relleno solo hace falta en el caso patologico.
+ */
+const DUELIST_DRAW_ATTEMPTS = 512;
+
+/**
+ * Las 40 cartas del mazo de un duelista, sorteadas de su pool con sus pesos.
+ *
+ * De donde sale el "40 del pool con pesos" es literal en la documentacion del
+ * decompilado
+ * (`Yu-Gi-Oh-Forbidden-Memories-Recompiled-master/notes/research/fusion-and-drop-tables/README.md:25-27`
+ * y `notes/more-duelists.md:88`): "Weights, not a card list: the game draws 40
+ * cards from the pool, so a card with twice the weight turns up about twice as
+ * often." El mazo del rival NO es una lista fija de 40: se sortea en cada
+ * partida, y por eso los pools tienen entre 21 y 169 cartas distintas. Cada
+ * tabla de pesos suma `DUEL_DROP_WEIGHT_TOTAL` (2048), el mismo denominador del
+ * umbral, asi que el sorteo es `rng.weightedPick` sin renormalizar, igual que
+ * `Duel_SelectCardDrop` (`src/game/duel_result_runtime.c`).
+ *
+ * El tope de copias no sale de ahi, y se mete a proposito por un motivo nuestro:
+ * `validateDeck` rechaza los mazos que se pasan de tres copias (o de una pieza de
+ * Exodia), y `materialiseDeck` (`setup.ts`) cambia en silencio cualquier mazo que
+ * no lo pase por un mazo inicial generado. Sin el reintento, un duelista con una
+ * carta muy pesada en su pool se quedaria sin su mazo y el jugador no veria por
+ * que. El reintento es el del mazo inicial: se rechaza el sorteo de esa carta y
+ * se vuelve a sortear, sin que baje el numero de cartas que faltan.
+ *
+ * Recibe el generador del motor, y no `Math.random`, para que el mazo dependa de
+ * la semilla de la partida y para que dos ejecuciones den el mismo mazo.
+ *
+ * Un duelista desconocido devuelve el mazo inicial, no un mazo vacio: es lo mismo
+ * que hace `materialiseDeck` con una configuracion invalida, y el motor no sabe
+ * arrancar un duelo con menos de 40 cartas.
+ */
+export function rollDuelistDeck(duelistId: number, rng: Rng): number[] {
+  const duelist = duelistById(duelistId);
+  if (duelist === undefined) return starterDeckCardIds(rng);
+  return rollDeckPool(duelist.deck, rng);
+}
+
+/** Sortea `DECK_SIZE` cartas de un pool ponderado del retail. */
+function rollDeckPool(pool: readonly DropEntry[], rng: Rng): number[] {
+  const weights = pool.map((entry) => entry[1]);
+  const counts = new Map<number, number>();
+  const deck: number[] = [];
+
+  for (let drawn = 0; drawn < DECK_SIZE; drawn += 1) {
+    const cardId = drawOne(pool, weights, counts, rng);
+    if (cardId === null) break;
+    counts.set(cardId, (counts.get(cardId) ?? 0) + 1);
+    deck.push(cardId);
+  }
+
+  // Relleno de seguridad para lo que haya faltado: se sigue bajando por el pool
+  // de mayor a menor peso y se copia cada carta hasta llenar sus huecos. Se
+  // rellena desde el pool respetando los topes de copia, y no con la carta mas
+  // pesada a lo bruto, porque lo que se quiere al final es un mazo que
+  // `validateDeck` acepte: uno con cuatro copias de algo se pierde en silencio
+  // dentro de `materialiseDeck`. Los 40 pools de la tabla dan para 40 cartas de
+  // sobra, asi que este camino no se recorre; si alguna vez se recorriera y el
+  // pool fuera tan pequeno que no llegara, el mazo saldria mas corto y
+  // `materialiseDeck` lo cambiaria por un mazo inicial, que es la degradacion
+  // correcta.
+  const byWeight = [...pool].sort((a, b) => b[1] - a[1]);
+  for (const [cardId] of byWeight) {
+    while (deck.length < DECK_SIZE && (counts.get(cardId) ?? 0) < copyLimitFor(cardId)) {
+      counts.set(cardId, (counts.get(cardId) ?? 0) + 1);
+      deck.push(cardId);
+    }
+    if (deck.length >= DECK_SIZE) break;
+  }
+
+  return deck;
+}
+
+/**
+ * Una carta del pool, o `null` si no sale ninguna.
+ *
+ * `null` cubre los dos finales posibles: que ningun peso alcance el umbral (el
+ * "no reintento" de `Duel_SelectCardDrop`) y que se hayan agotado los intentos
+ * del tope de seguridad. Un `-1` de `weightedPick` con una tabla que suma 2048 no
+ * deberia ocurrir nunca, pero el motor es puro y nunca lanza: el caso de "no sale
+ * ninguna" tiene que ser un valor.
+ */
+function drawOne(
+  pool: readonly DropEntry[],
+  weights: readonly number[],
+  counts: Map<number, number>,
+  rng: Rng,
+): number | null {
+  for (let attempt = 0; attempt < DUELIST_DRAW_ATTEMPTS; attempt += 1) {
+    const index = rng.weightedPick(weights);
+    if (index < 0) return null;
+
+    const entry = pool[index];
+    if (entry === undefined) return null;
+
+    // Cuarta copia (o segunda de una pieza de Exodia): el sorteo se rechaza y se
+    // repite, igual que en `starterDeckCardIds`.
+    if ((counts.get(entry[0]) ?? 0) >= copyLimitFor(entry[0])) continue;
+    return entry[0];
+  }
+  return null;
 }
 
 /** Todas las cartas de un tipo, util para el constructor de mazos. */

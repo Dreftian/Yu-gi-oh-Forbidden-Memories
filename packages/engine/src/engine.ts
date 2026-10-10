@@ -18,7 +18,6 @@ import {
   MONSTER_ZONES,
   RITUAL_TRIBUTE_COUNT,
   equipBonus,
-  ritualRecipe,
 } from './constants.js';
 import {
   attackAgainst,
@@ -36,6 +35,7 @@ import {
   fallbackTrap,
   hasAllExodiaPieces,
   hasTrap,
+  matchRitualTributes,
   trapForAttack,
 } from './effects.js';
 import {
@@ -48,7 +48,6 @@ import {
   isTrap,
   terrainBoost,
 } from './catalog.js';
-import type { RitualTribute } from './constants.js';
 import type { Rng } from './rng.js';
 import type {
   DuelOutcome,
@@ -536,19 +535,9 @@ function doRitual(
 
 /** Elige los tres monstruos concretos que cumplen una receta. */
 function pickTributes(available: readonly FieldCard[], ritualId: number): FieldCard[] {
-  const recipe = ritualRecipe(ritualId);
-  if (recipe === undefined) return [];
-
-  const chosen: FieldCard[] = [];
-  const taken = new Set<FieldCard>();
-
-  for (const requirement of recipe.tributes) {
-    const match = available.find((field) => !taken.has(field) && matchesTribute(field, requirement));
-    if (match === undefined) return [];
-    taken.add(match);
-    chosen.push(match);
-  }
-  return chosen;
+  // El mismo emparejamiento de dos pasadas que valida el ritual, para que lo que
+  // se paga sea exactamente lo que `checkRitual` dio por bueno.
+  return matchRitualTributes(available, ritualId) ?? [];
 }
 
 /** Retira los tributos del campo e invoca al resultado del ritual. */
@@ -579,23 +568,6 @@ function summonRitualResult(
     side,
     `${cardName(ritualCardId)} invoca a ${cardName(resultId)}.`,
   );
-}
-
-/** Un monstruo cumple un requisito de tributo. */
-function matchesTribute(field: FieldCard, requirement: RitualTribute): boolean {
-  const data = card(field.cardId);
-  if (data === undefined) return false;
-
-  if (requirement.cardId !== undefined) return data.id === requirement.cardId;
-  if (requirement.type !== undefined) return data.type === requirement.type;
-  if (requirement.level !== undefined) return data.level === requirement.level;
-  if (requirement.minAttack !== undefined && effectiveAttack(field) < requirement.minAttack) return false;
-  if (requirement.minDefense !== undefined && effectiveDefense(field) < requirement.minDefense) return false;
-  if (requirement.defenseGreaterThanAttack !== undefined) {
-    const stronger = effectiveDefense(field) > effectiveAttack(field);
-    if (requirement.defenseGreaterThanAttack !== stronger) return false;
-  }
-  return true;
 }
 
 /* ----------------------------------------------------------- Fusion ------- */

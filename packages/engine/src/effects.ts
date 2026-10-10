@@ -12,25 +12,34 @@
  */
 
 import {
-  CURSEBREAKER_ID,
   DARK_HOLE_ID,
-  DARK_PIERCING_LIGHT_ID,
-  DRAGON_CAPTURE_JAR_ID,
-  HARPIES_FEATHER_DUSTER_ID,
   MONSTER_REMOVAL_RULES,
   MONSTER_REMOVAL_TYPE_LIMIT,
-  RAIGEKI_ID,
-  SHADOW_SPELL_ID,
   SPELLBINDING_CIRCLE_ID,
   STAT_PENALTY_PER_LEVEL,
-  STOP_DEFENSE_ID,
   SWORDS_INITIAL_COUNTER,
+  TERRAIN_CARD_IDS,
   TRAP_THRESHOLDS,
   directDamage,
   equipBonus,
   lifePointRecovery,
   ritualRecipe,
 } from './constants.js';
+import {
+  EFFECT_GROUP_BOARD_DESTRUCTION,
+  EFFECT_GROUP_CURSEBREAKER,
+  EFFECT_GROUP_DARK_PIERCING_LIGHT,
+  EFFECT_GROUP_DIRECT_DAMAGE,
+  EFFECT_GROUP_HARPIES_FEATHER_DUSTER,
+  EFFECT_GROUP_LIFE_POINT_RECOVERY,
+  EFFECT_GROUP_MONSTER_REMOVAL,
+  EFFECT_GROUP_RAIGEKI,
+  EFFECT_GROUP_STAT_PENALTY,
+  EFFECT_GROUP_STOP_DEFENSE,
+  EFFECT_GROUP_SWORDS,
+  EFFECT_GROUP_TERRAIN,
+  effectGroupForCardId,
+} from './data/effect-groups.generated.js';
 import { card, cardName } from './catalog.js';
 import {
   damage,
@@ -47,19 +56,11 @@ import type { DuelState, FieldCard, FieldZone, Side, SideState } from './types.j
 
 /* ------------------------------------------------------------ Utilidad ----- */
 
-/** `Swords of Revealing Light`, id 348. */
-const SWORDS_ID = 348;
 /** `Fake Trap`, id 690. */
 const FAKE_TRAP_ID = 690;
 /** Primer id de trampa y ultimo, para reconocer la fila de trampas. */
 const TRAP_FIRST_ID = 681;
 const TRAP_LAST_ID = 690;
-
-/** `DARK_PIERCING_LIGHT` revela tambien los monstruos propios (quirk del retail). */
-const DARK_PIERCING_REVEALS_OWN_FIELD = true;
-
-/** Los ids de carta de los seis terrenos, indexados por terreno 1..6. */
-const TERRAIN_CARD_IDS = [0, 330, 331, 332, 333, 334, 335];
 
 function zoneIsMonsters(zone: FieldZone): boolean {
   return zone === 1 || zone === 2;
@@ -139,62 +140,89 @@ function destroyWhere(
 
 /**
  * Punto de entrada de una carta sin monstruo: decide que grupo de efecto le
- * toca por su id y lo aplica.
+ * toca y lo aplica.
  *
- * Un hechizo que no tiene ningun grupo asignado se gasta sin hacer nada, que es
- * lo que hace el retail con el grupo 0.
+ * El retail no decide por id de carta: `DuelEffect_StartCardEffect` convierte
+ * la carta a un *effect id* y `DuelEffect_UpdateCardEffect` mira ese indice en
+ * `gDuelEffect_abGroupByEffectId`, una tabla de 104 entradas, y despacha por el
+ * grupo (`src/game/duel_effect_tables.c`, `notes/magic-effect-groups.md`). Esa
+ * tabla es `data/effect-groups.generated.ts`, y aqui se consulta igual:
+ * `effectGroupForCardId` hace la conversion carta -> effect id y el `switch`
+ * siguiente hace grupo -> handler. La lista de ids que cada familia agrupa sale
+ * del generador, no de una transcripcion a mano.
+ *
+ * Cada grupo tiene DOS handlers y se ejecuta el segundo. El primero es
+ * `DuelEffect_ClearCardEffect` para todos menos Swords y Ritual, cuyos pares son
+ * `DuelEffect_StartSwords`/`DuelEffect_ApplySwords` y
+ * `DuelEffect_StartRitual`/`DuelEffect_ApplyRitual`. Aqui no hay fase de
+ * "empezar": el motor resuelve el hechizo entero de una vez, asi que solo
+ * existe el handler de aplicacion.
+ *
+ * Un grupo 0 (ni una trampa, ni un equip, ni un efecto sin trabajo) se gasta sin
+ * hacer nada, que es lo que hace el retail con `DuelEffect_ClearCardEffect`. Los
+ * rituales (grupo 12) tampoco entran aqui: se resuelven por su propia accion,
+ * asi que caen en ese mismo caso.
  */
 export function applySpell(state: DuelState, side: Side, cardId: number): DuelState {
   const current = state.sides[side];
   const stats = { ...current.stats, spellsUsed: current.stats.spellsUsed + 1 };
-  let next: DuelState = { ...state, sides: replaceSide(state.sides, side, { ...current, stats }) };
+  const next: DuelState = { ...state, sides: replaceSide(state.sides, side, { ...current, stats }) };
 
-  // Los seis terrenos, por id exacto.
-  const terrain = TERRAIN_CARD_IDS.indexOf(cardId);
-  if (terrain >= 1) return applyTerrain(next, side, terrain);
-
-  // Curacion (338-342) y danio directo (343-347), por rango de id.
-  if (cardId >= 338 && cardId <= 342) return applyRecovery(next, side, cardId);
-  if (cardId >= 343 && cardId <= 347) return applyDirectDamage(next, side, cardId);
-
-  // Eliminacion por tipo o por ATK.
-  if (MONSTER_REMOVAL_RULES.some(([id]) => id + 600 === cardId)) {
-    return applyMonsterRemoval(next, side, cardId);
-  }
-
-  switch (cardId) {
-    case STOP_DEFENSE_ID:
+  switch (effectGroupForCardId(cardId)) {
+    case EFFECT_GROUP_TERRAIN:
+      return applyTerrain(next, side, terrainOf(cardId));
+    case EFFECT_GROUP_LIFE_POINT_RECOVERY:
+      return applyRecovery(next, side, cardId);
+    case EFFECT_GROUP_DIRECT_DAMAGE:
+      return applyDirectDamage(next, side, cardId);
+    case EFFECT_GROUP_BOARD_DESTRUCTION:
+      // Dark Hole y Dragon Capture Jar comparten handler en el retail; la
+      // diferencia la marca la carta, no el grupo.
+      return cardId === DARK_HOLE_ID
+        ? applyDarkHole(next)
+        : applyDragonCaptureJar(next, side);
+    case EFFECT_GROUP_MONSTER_REMOVAL:
+      return applyMonsterRemoval(next, side, cardId);
+    case EFFECT_GROUP_STOP_DEFENSE:
       return applyStopDefense(next, side);
-    case DRAGON_CAPTURE_JAR_ID:
-      return applyDragonCaptureJar(next, side);
-    case DARK_HOLE_ID:
-      return applyDarkHole(next);
-    case RAIGEKI_ID:
+    case EFFECT_GROUP_RAIGEKI:
       return applyRaigeki(next, side);
-    case SWORDS_ID:
+    case EFFECT_GROUP_DARK_PIERCING_LIGHT:
+      return applyDarkPiercingLight(next, side);
+    case EFFECT_GROUP_STAT_PENALTY:
+      // Spellbinding Circle quita un nivel; Shadow Spell, dos.
+      return applyStatPenalty(next, side, cardId === SPELLBINDING_CIRCLE_ID ? 1 : 2);
+    case EFFECT_GROUP_SWORDS:
       return applySwords(next, side);
-    case SPELLBINDING_CIRCLE_ID:
-      return applyStatPenalty(next, side, 1);
-    case SHADOW_SPELL_ID:
-      return applyStatPenalty(next, side, 2);
-    case DARK_PIERCING_LIGHT_ID:
-      return applyDarkPiercingLight(next);
-    case CURSEBREAKER_ID:
+    case EFFECT_GROUP_CURSEBREAKER:
       return applyCursebreaker(next, side);
-    case HARPIES_FEATHER_DUSTER_ID:
+    case EFFECT_GROUP_HARPIES_FEATHER_DUSTER:
       return applyHarpiesFeatherDuster(next, side);
     default:
       return withEvent(next, { type: 'effect', label: cardName(cardId) });
   }
 }
 
+/** Terreno 1..6 de una carta de campo, o 0 si la carta no es un terreno. */
+function terrainOf(cardId: number): number {
+  for (let terrain = 1; terrain <= 6; terrain += 1) {
+    if (TERRAIN_CARD_IDS[terrain] === cardId) return terrain;
+  }
+  return 0;
+}
+
 /**
  * Cambio de terreno. El terreno es compartido: afecta a los dos lados, asi que
  * recalcula el modificador de todos los monstruos en juego.
+ *
+ * Hay que GUARDAR el terreno en el estado, no solo recalcular lo que ya esta en
+ * el campo: `makeFieldCard` lee `state.terrain` al entrar una carta, asi que sin
+ * esto un monstruo invocado despues del terreno entraria sin bonificacion. El
+ * campo es compartido, de modo que ninguno de los dos lados es dueno de el.
  */
 export function applyTerrain(state: DuelState, _side: Side, terrain: number): DuelState {
   const announced = withEvent(state, { type: 'effect', label: `Terreno: ${terrainName(terrain)}` });
-  return { ...announced, sides: refreshTerrain(announced.sides, terrain) };
+  return { ...announced, terrain, sides: refreshTerrain(announced.sides, terrain) };
 }
 
 /** Curacion de vida al usuario, con techo en sus PV de inicio. */
@@ -274,20 +302,19 @@ export function applySwords(state: DuelState, side: Side): DuelState {
 }
 
 /**
- * `Dark-piercing Light`: revela los monstruos boca abajo.
+ * `Dark-piercing Light`: revela las cartas boca abajo de la fila S/T del lado
+ * que esta en turno, y solo de ahi.
  *
- * El retail recorre los slots 5..14, o sea las dos filas de monstruos, asi que
- * revela tambien los propios. Es un comportamiento genuino del retail, por eso
- * va con su constante y no escondido.
+ * El retail recorre `for (i = DUEL_FIELD_ROW_SIZE; i < DUEL_CARD_SIDE_RECORD_COUNT; i++)`
+ * sobre `D_800907D8_2d[D_8009B1D5][i]`: `DUEL_FIELD_ROW_SIZE` es el ancho de una
+ * fila, asi que el recorrido empieza en la SEGUNDA fila de ESE lado
+ * (`D_8009B1D5` es el lado en turno, no los dos). No son las filas de monstruos
+ * ni son las de los dos lados (`DuelEffect_ApplyDarkPiercingLight`,
+ * `src/game/duel_card_effects.c:547-548`).
  */
-export function applyDarkPiercingLight(state: DuelState): DuelState {
+export function applyDarkPiercingLight(state: DuelState, side: Side): DuelState {
   const announced = withEvent(state, { type: 'effect', label: 'Dark-piercing Light' });
-  const sides = DARK_PIERCING_REVEALS_OWN_FIELD ? ([0, 1] as const) : ([state.turn] as const);
-  let next = announced;
-  for (const side of sides) {
-    next = mapRow(next, side, 2, (f) => ({ ...f, faceDown: false }));
-  }
-  return next;
+  return mapRow(announced, side, 3, (f) => ({ ...f, faceDown: false }));
 }
 
 /**
@@ -311,18 +338,22 @@ export function applyStatPenalty(state: DuelState, side: Side, levels: number): 
 /**
  * `Cursebreaker`: deshace las reducciones de nivel de los monstruos propios.
  *
- * El `statModifier` mezcla varias cosas (equips positivos, penalizaciones
- * negativas), asi que solo se levanta la parte negativa y el bonus del equip se
- * conserva.
+ * El `statModifier` mezcla varias cosas: el bonus que aporta el equip (positivo)
+ * y las penalizaciones de `Spellbinding Circle` y `Shadow Spell` (negativas).
+ * Cursebreaker levanta las penalizaciones y deja intacto el bonus del equip, asi
+ * que el resultado es el maximo entre lo que hay y el suelo que marca el equip.
+ *
+ * El suelo se tomaba antes como `Math.min(statModifier, equipBonus)`, que con un
+ * modificador negativo se quedaba siempre en el propio modificador: la carta no
+ * hacia nada, con equip o sin el. Comprueba el caso dificil: con Spellbinding
+ * Circle puesta (-1000) y un equip (+500) el modificador es -500, y el piso son
+ * los +500 del equip, no -500.
  */
 export function applyCursebreaker(state: DuelState, side: Side): DuelState {
   const announced = withEvent(state, { type: 'effect', label: 'Cursebreaker' });
   return mapRow(announced, side, 2, (f) => {
     const equipped = f.equipId !== null ? equipBonus(f.equipId) : 0;
-    // Cuanto del modificador viene del equip: eso no se toca.
-    const fromEquip = Math.min(f.statModifier, equipped);
-    const fromOther = f.statModifier - fromEquip;
-    return { ...f, statModifier: fromEquip + Math.max(0, fromOther) };
+    return { ...f, statModifier: Math.max(f.statModifier, equipped) };
   });
 }
 
@@ -368,35 +399,70 @@ export function applyMonsterRemoval(state: DuelState, side: Side, cardId: number
 export function checkRitual(tributes: readonly FieldCard[], ritualId: number): number {
   const recipe = ritualRecipe(ritualId);
   if (recipe === undefined) return 0;
-  if (tributes.length < recipe.tributes.length) return 0;
-
-  // Cada requisito de la receta necesita una carta distinta.
-  const used = new Set<number>();
-  for (const requirement of recipe.tributes) {
-    const match = tributes.findIndex(
-      (field, index) => !used.has(index) && tributeMatches(field, requirement),
-    );
-    if (match === -1) return 0;
-    used.add(match);
-  }
-  return recipe.resultId;
+  return matchRitualTributes(tributes, ritualId) === null ? 0 : recipe.resultId;
 }
 
-/** Una carta cumple un requisito de tributo? */
-function tributeMatches(field: FieldCard, requirement: RitualTribute): boolean {
+/**
+ * Los tres monstruos concretos que cumplen una receta, o `null` si no hay
+ * material. `Duel_CheckRitual` devuelve los registros que despues usa el effect
+ * handler para retirarlos del campo, asi que el emparejamiento y la eleccion de
+ * a quien pagar tienen que ser la misma cosa: por eso vive aqui y lo usan tanto
+ * esta comprobacion como `engine.ts`.
+ */
+export function matchRitualTributes(
+  tributes: readonly FieldCard[],
+  ritualId: number,
+): FieldCard[] | null {
+  const recipe = ritualRecipe(ritualId);
+  if (recipe === undefined) return null;
+  if (tributes.length < recipe.tributes.length) return null;
+
+  const found: (FieldCard | undefined)[] = new Array<FieldCard | undefined>(recipe.tributes.length);
+  const taken = new Set<number>();
+
+  // Dos pasadas, como `Duel_CheckRitual` (`duel_check_ritual.c:413-491`): una
+  // primera que toma, para cada tributo, una carta que sea EXACTAMENTE ese id, y
+  // una segunda que rellena lo que falte. El retail compara en la segunda pasada
+  // el id base de una copia; aqui no hay variantes de carta, asi que el segundo
+  // turno es el del matcher aproximado, que solo existe para las 21 recetas sin
+  // ids conocidos. El orden importa: sin las dos pasadas, un tributo exacto
+  // podia quedarse sin carta porque una aproximacion se llevo antes la que le
+  // tocaba.
+  for (let pass = 0; pass < 2; pass += 1) {
+    for (let slot = 0; slot < recipe.tributes.length; slot += 1) {
+      if (found[slot] !== undefined) continue;
+      const requirement = recipe.tributes[slot] as RitualTribute;
+      if ((requirement.kind === 'exact') !== (pass === 0)) continue;
+
+      const match = tributes.findIndex(
+        (field, index) => !taken.has(index) && tributeMatches(field, requirement),
+      );
+      if (match === -1) return null;
+      taken.add(match);
+      found[slot] = tributes[match];
+    }
+  }
+  return found.filter((field): field is FieldCard => field !== undefined);
+}
+
+/**
+ * Una carta cumple un requisito de tributo?
+ *
+ * `exact` es la comparacion del retail: el id de la carta y nada mas. El resto es
+ * la aproximacion que sustituye a los 21 recetas cuyos ids estan en el disco, y
+ * se marca como tal en `constants.ts`.
+ */
+export function tributeMatches(field: FieldCard, requirement: RitualTribute): boolean {
+  if (requirement.kind === 'exact') return field.cardId === requirement.cardId;
+
   const data = card(field.cardId);
   if (data === undefined) return false;
-
-  if (requirement.cardId !== undefined) return data.id === requirement.cardId;
   if (requirement.type !== undefined) return data.type === requirement.type;
-  if (requirement.level !== undefined) return data.level === requirement.level;
   if (requirement.minAttack !== undefined && effectiveAttack(field) < requirement.minAttack) return false;
-  if (requirement.minDefense !== undefined && effectiveDefense(field) < requirement.minDefense) return false;
   if (requirement.defenseGreaterThanAttack !== undefined) {
-    const stronger = effectiveDefense(field) > effectiveAttack(field);
-    if (requirement.defenseGreaterThanAttack !== stronger) return false;
+    return effectiveDefense(field) > effectiveAttack(field) === requirement.defenseGreaterThanAttack;
   }
-  // Un requisito sin condiciones admite cualquier monstruo.
+  // Un requisito aproximado sin condiciones admite cualquier monstruo.
   return true;
 }
 

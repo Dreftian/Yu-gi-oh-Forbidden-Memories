@@ -34,7 +34,7 @@ export type {
   SideView,
 } from './types.js';
 
-export { BOOT_SEED, RAND_MAX, Rng } from './rng.js';
+export { BOOT_SEED, RAND_MAX, Rng, THRESHOLD_TOTAL } from './rng.js';
 
 // Los mapas de nombre se reexportan para el cliente y se importan aqui para que
 // las funciones de abajo puedan consultarlos.
@@ -52,6 +52,8 @@ export {
   cardIdsOfType,
   cardsOfType,
   CARD_COUNT,
+  DUELISTS,
+  duelistById,
   equipStatBonus,
   fusionResult,
   guardianStarBonus,
@@ -63,9 +65,11 @@ export {
   isSpellLike,
   isTrap,
   participatesInFusion,
+  rollDuelistDeck,
   starterDeckCardIds,
   terrainBoost,
 } from './catalog.js';
+export type { DuelistData, DropEntry } from './catalog.js';
 
 // Los mapas de nombre del catalogo (tipo, atributo y estrella) se usan para
 // pintar las cartas, asi que forman parte de la API publica.
@@ -134,10 +138,34 @@ export {
   fallbackTrap,
   hasAllExodiaPieces,
   hasTrap,
+  matchRitualTributes,
+  tributeMatches,
   trapForAttack,
   trapThreshold,
   trapsInPlay,
 } from './effects.js';
+
+// La tabla de dispatch de efectos es parte de la API publica: es lo que decide
+// que hace cada Magia y Ritual, y el README la cita como tal.
+export {
+  EFFECT_GROUP_BOARD_DESTRUCTION,
+  EFFECT_GROUP_COUNT,
+  EFFECT_GROUP_CURSEBREAKER,
+  EFFECT_GROUP_DARK_PIERCING_LIGHT,
+  EFFECT_GROUP_DIRECT_DAMAGE,
+  EFFECT_GROUP_HARPIES_FEATHER_DUSTER,
+  EFFECT_GROUP_LIFE_POINT_RECOVERY,
+  EFFECT_GROUP_MONSTER_REMOVAL,
+  EFFECT_GROUP_NAMES,
+  EFFECT_GROUP_NONE,
+  EFFECT_GROUP_RAIGEKI,
+  EFFECT_GROUP_RITUAL,
+  EFFECT_GROUP_STAT_PENALTY,
+  EFFECT_GROUP_STOP_DEFENSE,
+  EFFECT_GROUP_SWORDS,
+  EFFECT_GROUP_TERRAIN,
+  effectGroupForCardId,
+} from './data/effect-groups.generated.js';
 
 export { applyAction, finish, startDuel } from './engine.js';
 

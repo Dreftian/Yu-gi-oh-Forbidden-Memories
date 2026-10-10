@@ -599,9 +599,9 @@ function buildEffectGroups(cardCount) {
 /* ------------------------------------------------------ Duelistas ---------- */
 
 /**
- * Los cuatro pools de `drops.csv`. `deck` es el mazo real de duelo del
- * duelista; los otros tres son las cartas S/A/B/C/D que suelta la IA cuando
- * pierde una ronda.
+ * Los cuatro pools de `drops.csv`. `deck` es el pool ponderado del mazo del
+ * duelista —de el se sortean las 40 cartas, no es un mazo fijo—; los otros tres
+ * son las cartas S/A/B/C/D que suelta la IA cuando pierde una ronda.
  */
 const DECK_POOL = 'deck';
 const DROP_POOLS = [
@@ -702,7 +702,12 @@ function buildDuelists() {
     return {
       id,
       name: duelist.name,
-      deck: duelist.deck.map(([cardId]) => cardId),
+      // El pool del mazo se emite CON pesos, igual que los de drops. Antes solo
+      // se emitian los ids, y eso hacia imposible sortear el mazo del rival: el
+      // motor necesita saber cuanto tira de cada carta para hacerlo con el
+      // mismo criterio que `Duel_SelectCardDrop` (README.md de
+      // `notes/research/fusion-and-drop-tables`, seccion "Reading a weight").
+      deck: duelist.deck,
       drops: {
         pow: duelist.drops.pow,
         bcd: duelist.drops.bcd,
@@ -877,7 +882,7 @@ writeGenerated(
 // Fuente: notes/research/fusion-and-drop-tables/{drops,drops_summary}.csv
 // ${duelists.length} duelistas, ${deckCards} cartas de mazo y ${dropCards} cartas de drop.
 
-/** Una carta del pool de drops con su peso de sorteo. */
+/** Una carta de un pool con su peso de sorteo. */
 export type DropEntry = readonly [cardId: number, weight: number];
 
 export interface DuelistData {
@@ -885,13 +890,19 @@ export interface DuelistData {
   readonly name: string;
 
   /**
-   * Mazo real de duelo, en ids de carta y sin repetir.
+   * Pool ponderado del mazo del duelista: \`[carta, peso]\`, como los de drops.
    *
-   * Es el pool \`deck\` de \`drops.csv\`: las cartas con las que se planta el
-   * duelo, no una seleccion. Los pesos del CSV no se guardan porque en un mazo
-   * ya esta todo dentro; para los drops, que si se sortean, si.
+   * NO es un mazo de 40 cartas. Es el pool \`deck\` de \`drops.csv\`, del que el
+   * retail sortea las 40 cartas del duelo: "Weights, not a card list: the game
+   * draws 40 cards from the pool, so a card with twice the weight turns up about
+   * twice as often"
+   * (\`notes/research/fusion-and-drop-tables/README.md\`). Por eso los 40 pools
+   * tienen entre 21 y 169 cartas distintas.
+   *
+   * Los pesos se guardan porque sin ellos no hay sorteo posible: cada tabla suma
+   * 2048, el mismo denominador del umbral de \`(rand() & 0x7FF) + 1\`.
    */
-  readonly deck: readonly number[];
+  readonly deck: readonly DropEntry[];
 
   /** Los tres pools que suelta la IA cuando pierde: S/A, B/C/D y S/A TEC. */
   readonly drops: {

@@ -1,17 +1,19 @@
 /**
  * Punto de entrada del cliente.
  *
- * Monta la aplicacion y decide que pantalla se ve: bienvenida, vestibulo o
- * duelo. El flujo tiene dos ramas que comparten el motor pero no la red:
+ * Monta la aplicacion y decide que pantalla se ve: bienvenida, vestibulo,
+ * campana o duelo. El flujo tiene tres ramas que comparten el motor pero no la red:
  *
  *  - **En linea**: el servidor manda. El cliente solo envia jugadas y pinta lo
  *    que le llega.
  *  - **Contra la CPU**: el motor corre aqui. No hace falta servidor, asi que
  *    funciona sin conexion.
+ *  - **Campana**: igual que el anterior pero el rival es uno de los 40 duelistas
+ *    del retail y su mazo sale sorteado de su propio pool de pesos.
  */
 
-import { DuelSession, STARTING_LIFE_POINTS, viewFor } from '@yfm/engine';
-import type { DuelState, DuelView, PlayerAction } from '@yfm/engine';
+import { DuelSession, STARTING_LIFE_POINTS, duelistById, rollDuelistDeck, validateDeck, viewFor } from '@yfm/engine';
+import type { DeckConfig, DuelState, DuelView, PlayerAction } from '@yfm/engine';
 
 import { NetClient, loadName, loadToken, saveName } from './net.js';
 import type { NetState } from './net.js';
@@ -20,14 +22,18 @@ import { DuelScreen, resultText } from './ui/duel.js';
 import type { DuelHandlers } from './ui/duel.js';
 import { button, chip, el, render } from './ui/dom.js';
 import { renderLobby, renderNotice } from './ui/lobby.js';
+import { renderCampaign } from './ui/campaign.js';
 import { renderWelcome } from './ui/welcome.js';
 import { Rng } from '@yfm/engine';
 
 /** Que pantalla se esta viendo. */
-type Screen = 'welcome' | 'lobby' | 'duel' | 'cpu';
+type Screen = 'welcome' | 'lobby' | 'campaign' | 'duel' | 'cpu';
 
 /** Cuanto espera antes de preguntar por un rival que no llega. */
 const AI_DELAY_MS = 450;
+
+/** Como se llama al rival cuando no hay duelista de por medio. */
+const CPU_NAME = 'CPU';
 
 /** La aplicacion completa. */
 class App {
@@ -36,11 +42,21 @@ class App {
   private screen: Screen = 'welcome';
   private duel: DuelScreen | null = null;
 
-  /** La sesion del modo contra la CPU. */
-  private cpu: { session: DuelSession; state: DuelState; rng: Rng } | null = null;
-  /** Si la CPU ya esta pensando, para no encadenar dos turnos suyos. */
+  /**
+   * La sesion local: contra la CPU o contra un duelista de la campana.
+   *
+   * Es el mismo duelo en los dos casos y por eso se juega con el mismo
+   * `cpuTurn`. Lo unico que cambia es el mazo del rival y como se le llama.
+   */
+  private local: {
+    session: DuelSession;
+    state: DuelState;
+    rng: Rng;
+    opponentName: string;
+  } | null = null;
+  /** Si el rival ya esta pensando, para no encadenar dos turnos suyos. */
   private cpuThinking = false;
-  /** Para cancelar el turno de la CPU si el jugador sale antes de tiempo. */
+  /** Para cancelar el turno del rival si el jugador sale antes de tiempo. */
   private cpuTimer: number | null = null;
 
   /** El token guardado, para reconectar sin pedir nombre otra vez. */
@@ -88,11 +104,14 @@ class App {
       case 'lobby':
         this.renderLobby(state);
         break;
+      case 'campaign':
+        this.renderCampaignScreen();
+        break;
       case 'duel':
         this.renderDuel(state);
         break;
       case 'cpu':
-        this.renderCpu();
+        this.renderLocal();
         break;
       default:
         break;
@@ -167,6 +186,20 @@ class App {
       createRoom: (lifePoints) => this.net.createRoom(lifePoints),
       joinRoom: (code) => this.net.joinRoom(code),
       playCpu: () => this.startCpuDuel(),
+      campaign: () => this.go('campaign'),
+    });
+  }
+
+  /* ------------------------------------------------------------ Campana ---- */
+
+  /** Pinta el selector de duelistas. */
+  private renderCampaignScreen(): void {
+    const host = el('div');
+    this.root.append(host);
+
+    renderCampaign(host, {
+      duel: (duelistId) => this.startCampaignDuel(duelistId),
+      back: () => this.toMenu(),
     });
   }
 
@@ -228,42 +261,78 @@ class App {
   /** Vuelve al menu cancelando lo que hubiera en marcha. */
   private toMenu(): void {
     this.cancelCpuTimer();
-    this.cpu = null;
+    this.local = null;
     this.duel = null;
     if (this.screen === 'duel') this.net.leave();
     this.go(this.token === '' ? 'welcome' : 'lobby');
   }
 
-  /* ------------------------------------------------------- Contra la CPU -- */
+  /* ------------------------------------------------- Duelos en local ------- */
 
   /** Arranca una partida local contra la CPU. */
   private startCpuDuel(): void {
+    const starter: DeckConfig = { cards: null, lifePoints: STARTING_LIFE_POINTS };
+    this.startLocalDuel(starter, starter, CPU_NAME);
+  }
+
+  /**
+   * Arranca un duelo local contra un duelista de la campana.
+   *
+   * El mazo del jugador es el inicial, igual que contra la CPU, y el del rival sale
+   * sorteado del pool de pesos del duelista. La IA es la misma de siempre: cambia
+   * el mazo, no las reglas.
+   */
+  private startCampaignDuel(duelistId: number): void {
+    const name = duelistById(duelistId)?.name ?? 'Duelista';
     const seed = Math.floor(Math.random() * 0xffffffff);
-    const session = DuelSession.create(seed, [
+    const rivalDeck = rollDuelistDeck(duelistId, new Rng(seed));
+
+    // `materialiseDeck` cambia en silencio por un mazo inicial cualquier mazo que
+    // no pase `validateDeck`, asi que un mazo invalido aqui no daria ningun error:
+    // el jugador veria un duelista cualquiera y no sabria por que. Se avisa en
+    // consola aunque `rollDuelistDeck` garantiza que no tiene que pasar.
+    const invalid = validateDeck(rivalDeck);
+    if (invalid !== null) {
+      console.error(`El mazo de ${name} no es valido (${invalid}); se usara un mazo inicial.`);
+    }
+
+    this.startLocalDuel(
       { cards: null, lifePoints: STARTING_LIFE_POINTS },
-      { cards: null, lifePoints: STARTING_LIFE_POINTS },
-    ]);
-    this.cpu = { session, state: session.getState(), rng: new Rng(seed) };
+      { cards: rivalDeck, lifePoints: STARTING_LIFE_POINTS },
+      name,
+      seed,
+    );
+  }
+
+  /** Arranca el duelo local con los dos mazos que se le pasen. */
+  private startLocalDuel(
+    player: DeckConfig,
+    rival: DeckConfig,
+    opponentName: string,
+    seed: number = Math.floor(Math.random() * 0xffffffff),
+  ): void {
+    const session = DuelSession.create(seed, [player, rival]);
+    this.local = { session, state: session.getState(), rng: new Rng(seed), opponentName };
     this.duel = null;
     this.go('cpu');
     this.maybeRunCpu();
   }
 
   /** Repinta la partida local. */
-  private renderCpu(): void {
-    const cpu = this.cpu;
-    if (cpu === null) {
+  private renderLocal(): void {
+    const local = this.local;
+    if (local === null) {
       this.go('lobby');
       return;
     }
 
-    const view: DuelView = viewFor(cpu.state, 0);
+    const view: DuelView = viewFor(local.state, 0);
     const handlers: DuelHandlers = {
-      act: (action) => this.cpuAct(action),
+      act: (action) => this.localAct(action),
       leave: () => this.toMenu(),
       surrender: () => {
-        const next = cpu.session.act({ type: 'surrender' });
-        cpu.state = next;
+        const next = local.session.act({ type: 'surrender' });
+        local.state = next;
         this.render();
       },
       // En local no hay nadie al que escribirle.
@@ -272,9 +341,10 @@ class App {
 
     const options = {
       view,
-      over: cpu.state.outcome !== null,
+      over: local.state.outcome !== null,
       yourName: 'Tu',
-      resultText: resultText(view, cpu.state.outcome?.winner === 0),
+      opponentName: local.opponentName,
+      resultText: resultText(view, local.state.outcome?.winner === 0),
     };
 
     if (this.duel === null) this.duel = new DuelScreen(handlers, options);
@@ -286,32 +356,32 @@ class App {
   }
 
   /** Aplica una jugada del jugador en la partida local. */
-  private cpuAct(action: PlayerAction): void {
-    const cpu = this.cpu;
-    if (cpu === null || cpu.state.outcome !== null) return;
+  private localAct(action: PlayerAction): void {
+    const local = this.local;
+    if (local === null || local.state.outcome !== null) return;
 
-    const next = cpu.session.act(action);
-    cpu.state = next;
+    const next = local.session.act(action);
+    local.state = next;
     this.render();
     this.maybeRunCpu();
   }
 
   /**
-   * Lanza el turno de la CPU si toca y no esta pensando ya.
+   * Lanza el turno del rival si toca y no esta pensando ya.
    *
    * El retardo no es cosmetico: sin el, la pantalla se redibuja dozens de veces
    * seguidas y las animaciones no llegan a verse.
    */
   private maybeRunCpu(): void {
-    const cpu = this.cpu;
-    if (cpu === null || cpu.state.outcome !== null) return;
-    if (cpu.state.turn !== 1) return;
+    const local = this.local;
+    if (local === null || local.state.outcome !== null) return;
+    if (local.state.turn !== 1) return;
     if (this.cpuThinking) return;
 
     this.cpuThinking = true;
     this.cpuTimer = window.setTimeout(() => {
       this.cpuTimer = null;
-      const current = this.cpu;
+      const current = this.local;
       if (current === null || current.state.outcome !== null) {
         this.cpuThinking = false;
         return;
@@ -319,7 +389,7 @@ class App {
       current.state = cpuTurn(current.state, current.rng);
       this.cpuThinking = false;
       this.render();
-      // La CPU puede haber pasado el turno al jugador; no hace falta seguir.
+      // El rival puede haber pasado el turno al jugador; no hace falta seguir.
     }, AI_DELAY_MS);
   }
 

@@ -45,6 +45,14 @@ export interface DuelScreenOptions {
   readonly view: DuelView;
   readonly over: boolean;
   readonly yourName: string;
+  /**
+   * Como se llama el rival, si hay un nombre que poner.
+   *
+   * Es opcional a proposito: en el modo campana el rival es un duelista con
+   * nombre, y en los otros dos caminos no hay ninguno y se queda "Rival". Asi la
+   * pantalla no necesita saber de donde viene la partida.
+   */
+  readonly opponentName?: string;
   readonly resultText: string;
 }
 
@@ -124,21 +132,28 @@ export class DuelScreen {
 
   /* ------------------------------------------------------------- Campo --- */
 
-  private field(): HTMLElement {
+private field(): HTMLElement {
     const { view } = this.options;
     const field = el('div', { class: 'field' });
 
-    // De arriba abajo: el rival primero, igual que en el juego original.
-    field.append(this.fieldRow('Rival', view.opponent, false));
+    // De arriba abajo, el rival primero, igual que en el juego original. En el
+    // modo campana su etiqueta es el nombre del duelista y ocupa mas que la
+    // columna fija de "Rival", asi que lleva su propia clase.
+    const rivalName = this.options.opponentName ?? 'Rival';
+    field.append(this.fieldRow(rivalName, view.opponent, false, rivalName !== 'Rival'));
     field.append(this.fieldRow('Tu campo', view.you, true));
 
     return field;
   }
 
   /** Las dos filas de un lado: atras y monstruos. */
-  private fieldRow(label: string, side: DuelView['you'], mine: boolean): HTMLElement {
+  private fieldRow(label: string, side: DuelView['you'], mine: boolean, wide = false): HTMLElement {
     const row = el('div', { class: 'field-row' });
-    row.append(el('div', { class: 'field-row-label', text: label }));
+    const labelNode = el('div', {
+      class: wide ? 'field-row-label is-name' : 'field-row-label',
+      text: label,
+    });
+    row.append(labelNode);
 
     const zones = el('div', { class: 'field-zones' });
 

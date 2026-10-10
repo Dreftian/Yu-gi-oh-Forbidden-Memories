@@ -1,12 +1,14 @@
 /**
  * El vestibulo: donde se elige contra quien jugar.
  *
- * Tres caminos, y solo tres:
+ * Cuatro caminos:
  *
  *  - **Emparejamiento**: entras en la cola y el servidor te busca rival.
  *  - **Sala privada**: creas una con un codigo de cinco caracteres y se lo pasas
  *    a quien quieras jugar.
  *  - **Contra la CPU**: se juega en este mismo dispositivo, sin servidor.
+ *  - **Campana**: se juega en local contra uno de los 40 duelistas del retail, y
+ *    su mazo se sortea de su propio pool.
  */
 
 import { STARTING_LIFE_POINTS, isValidLifePoints } from '@yfm/engine';
@@ -21,6 +23,8 @@ export interface LobbyHandlers {
   readonly createRoom: (lifePoints: number) => void;
   readonly joinRoom: (code: string) => void;
   readonly playCpu: () => void;
+  /** Abre el selector de duelistas. */
+  readonly campaign: () => void;
 }
 
 /** Pinta el vestibulo. */
@@ -131,6 +135,21 @@ export function renderLobby(host: HTMLElement, state: NetState, handlers: LobbyH
   );
 
   grid.append(cpu);
+
+  /* ---------------------------------------------------------- Campana ----- */
+
+  const campaign = panel('Campana');
+  campaign.append(
+    el('p', {
+      text:
+        'Los 40 duelistas del original, uno a uno. Se juega en local y el rival usa ' +
+        'el mazo que le toca: el retail no tiene un mazo fijo por duelista, sino un ' +
+        'pool del que sortea 40 cartas con los pesos de la tabla.',
+    }),
+  );
+  campaign.append(button('Elegir duelista', () => handlers.campaign(), 'primary'));
+
+  grid.append(campaign);
   host.append(grid);
 }
 

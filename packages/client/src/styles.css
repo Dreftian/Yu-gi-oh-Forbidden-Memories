@@ -1129,6 +1129,101 @@ input[type='text']:focus {
   margin-bottom: 0.25rem;
 }
 
+/* --------------------------------------------------------- Campana ------- */
+
+/*
+ * La rejilla de duelistas. Cada casilla es un boton entero —no un div con un
+ * onclick— para que el teclado llegue a las cuarenta y el lector de pantalla las
+ * anuncie como botones: el boton global `button` de este archivo ya les da el
+ * color, el borde y el foco.
+ *
+ * Las mini-cartas bajan `--card-w`/`--card-h` en la propia fila. Es la misma
+ * tecnica que usa la ficha del campo y la mano: el interior de `.card` esta todo
+ * en `em`, asi que cambiar la medida del marco cambia el texto a la vez.
+ */
+
+.campaign-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr));
+  gap: 0.75rem;
+}
+
+.campaign-tile {
+  display: grid;
+  gap: 0.35rem;
+  justify-items: start;
+  text-align: left;
+  padding: 0.7rem 0.8rem 0.8rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  transition:
+    border-color 120ms ease,
+    transform 120ms ease;
+}
+
+/* El marco del boton global es de un pixel: el de la ficha tiene que verse para
+   que se sepa donde se esta, asi que se cambia de plano en el hover y el foco. */
+.campaign-tile:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: var(--gold);
+}
+
+.campaign-tile:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.campaign-name {
+  font-weight: 600;
+  color: var(--gold);
+  line-height: 1.25;
+}
+
+.campaign-pool {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+/* Las mini-cartas: mismo ancho de marco que la mano, pero mas bajas para que
+   quepan tres en fila al lado del nombre. */
+.campaign-cards {
+  --card-w: 54px;
+  --card-h: 76px;
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.campaign-mini {
+  width: var(--card-w);
+  height: var(--card-h);
+  flex-shrink: 0;
+  display: block;
+}
+
+/* A este tamaño no caben ni el atributo ni las estrellas, igual que en la ficha
+   del campo. El nombre basta para reconocerlas y el `aria-label` de la casilla
+   las lista enteras. */
+.campaign-mini .card-meta-attr,
+.campaign-mini .card-meta-stars {
+  display: none;
+}
+
+.campaign-go {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--gold);
+  letter-spacing: 0.04em;
+}
+
+/* El nombre del duelista es mas largo que la columna fija de "Rival", asi que la
+   etiqueta de su fila se ensancha. */
+.field-row-label.is-name {
+  width: auto;
+  max-width: 9rem;
+  color: var(--gold);
+}
+
 /* --------------------------------------------------------- Adaptable ---- */
 
 @media (max-width: 640px) {
@@ -1137,9 +1232,18 @@ input[type='text']:focus {
     --card-h: 100px;
   }
 
+  .campaign-cards {
+    --card-w: 46px;
+    --card-h: 64px;
+  }
+
   .field-row-label {
     width: 3.2rem;
     font-size: 0.64rem;
+  }
+
+  .field-row-label.is-name {
+    max-width: 6rem;
   }
 
   .zone {

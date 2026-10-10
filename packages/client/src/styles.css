@@ -35,6 +35,18 @@
   --frame-trap: var(--pink);
   --frame-ritual: var(--blue);
 
+  /* Variantes clara y oscura de cada marco. El filete se pinta con un
+     degradado que pasa por las tres, que es lo que le da el brillo metalico
+     sin necesidad de ninguna textura. */
+  --frame-monster-hi: #f4e0a4;
+  --frame-monster-lo: #6b4810;
+  --frame-magic-hi: #a8e3b4;
+  --frame-magic-lo: #1d4c28;
+  --frame-trap-hi: #f2a6d6;
+  --frame-trap-lo: #6b1f52;
+  --frame-ritual-hi: #a6cbf2;
+  --frame-ritual-lo: #1f3f6b;
+
   --radius: 6px;
   --card-w: 92px;
   --card-h: 128px;
@@ -228,11 +240,6 @@ input[type='text']:focus {
   gap: 0.6rem;
 }
 
-.card-art span {
-  white-space: pre-line;
-  line-height: 1.3;
-}
-
 /* ------------------------------------------------------- Pantalla 1: ------ */
 
 .lobby {
@@ -354,108 +361,535 @@ input[type='text']:focus {
 
 /* ------------------------------------------------------------- Carta ----- */
 
+/*
+ * La carta se monta por capas, de fuera hacia dentro: filete del tipo, doble
+ * filete interior, nombre, banda de tipo, ventana de arte y placas de
+ * estadisticas. El marco real lleva un filete del color del tipo; como el juego
+ * no trae texturas, el metal se aproxima con degradados y sombras.
+ *
+ * Todo el interior esta en `em` a proposito: la ficha del campo, la mano y el
+ * movil se ajustan cambiando una sola vez el `font-size` de `.card`.
+ */
+
+/* El doble filete interior se declara una vez y se reutiliza en todos los
+   estados que cambian la sombra (equipada, jugable, seleccionada). */
+.card,
+.card-back {
+  --filete-claro: rgba(255, 255, 255, 0.42);
+  --filete-oscuro: rgba(0, 0, 0, 0.55);
+  --card-inset: inset 0 0 0 1px var(--filete-claro), inset 0 0 0 2px var(--filete-oscuro);
+}
+
 .card {
   width: 100%;
   height: 100%;
-  border-radius: 3px;
-  border: 1px solid var(--frame-monster);
-  background: #1a1630;
-  padding: 0.2rem;
+  /* El borde es transparente a proposito: el filete lo pinta la segunda capa
+     de fondo recortada al border-box, que es lo unico que da un marco con
+     degradado sin perder el radio de las esquinas. */
+  border: 2px solid transparent;
+  border-radius: 5px;
+  padding: 0.36em;
+  background:
+    linear-gradient(180deg, #241e40 0%, #1a1630 45%, #120f22 100%) padding-box,
+    linear-gradient(
+        150deg,
+        var(--frame-hi) 0%,
+        var(--frame) 26%,
+        var(--frame-lo) 50%,
+        var(--frame) 74%,
+        var(--frame-hi) 100%
+      )
+      border-box;
+  box-shadow: var(--card-inset);
   display: flex;
   flex-direction: column;
-  font-size: 0.56rem;
-  line-height: 1.15;
+  gap: 0.14em;
+  font-size: 0.55rem;
+  line-height: 1.12;
+  color: #efe9dc;
   overflow: hidden;
   position: relative;
 }
 
+/* Cada tipo aporta su metal: tono base, luces, sombras, matiz y el tono de la
+   ventana de arte. El matiz es lo que despues desplaza el emblema de cada
+   carta, asi que el color sigue siendo el del retail aunque varie. */
 .card.t-monster {
-  border-color: var(--frame-monster);
+  --frame: var(--frame-monster);
+  --frame-hi: var(--frame-monster-hi);
+  --frame-lo: var(--frame-monster-lo);
+  --type-h: 42;
+  --art-hi: #3a2e16;
+  --art-lo: #171224;
+  --holo-angle: 115deg;
 }
 .card.t-magic {
-  border-color: var(--frame-magic);
+  --frame: var(--frame-magic);
+  --frame-hi: var(--frame-magic-hi);
+  --frame-lo: var(--frame-magic-lo);
+  --type-h: 132;
+  --art-hi: #163a22;
+  --art-lo: #0f1c17;
+  --holo-angle: 20deg;
 }
 .card.t-equip {
-  border-color: var(--frame-equip);
+  --frame: var(--frame-equip);
+  --frame-hi: var(--frame-magic-hi);
+  --frame-lo: var(--frame-magic-lo);
+  --type-h: 132;
+  --art-hi: #163a22;
+  --art-lo: #0f1c17;
+  --holo-angle: 20deg;
 }
 .card.t-trap {
-  border-color: var(--frame-trap);
+  --frame: var(--frame-trap);
+  --frame-hi: var(--frame-trap-hi);
+  --frame-lo: var(--frame-trap-lo);
+  --type-h: 330;
+  --art-hi: #43183a;
+  --art-lo: #1c1020;
+  --holo-angle: 160deg;
 }
 .card.t-ritual {
-  border-color: var(--frame-ritual);
+  --frame: var(--frame-ritual);
+  --frame-hi: var(--frame-ritual-hi);
+  --frame-lo: var(--frame-ritual-lo);
+  --type-h: 216;
+  --art-hi: #142c4e;
+  --art-lo: #0e1526;
+  --holo-angle: 95deg;
 }
 
 .card-name {
-  font-weight: 600;
-  color: #f0ead8;
+  flex: 0 1 auto;
+  min-height: 0;
+  font-size: 0.82em;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #fbf6e8;
+  /* Sobre el marco oscuro el nombre necesita una sombra minima para no
+     perderse en el filete de abajo. */
+  text-shadow: 0 1px 0 #00000099;
   overflow: hidden;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
 }
 
-.card-art {
-  flex: 1;
-  margin: 0.15rem 0;
-  background:
-    repeating-linear-gradient(45deg, #241f3a 0 4px, #1e1a30 4px 8px);
+/* La banda de tipo: su propia zona, con fondo propio, para que el tipo se lea
+   de un vistazo sin tener que mirar dentro de la ventana de arte. */
+.card-meta {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.24em;
+  padding: 0.1em 0.2em;
   border-radius: 2px;
-  display: grid;
-  place-items: center;
-  font-size: 0.55rem;
-  color: var(--text-faint);
-  min-height: 1.2rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.55);
+  background: rgba(0, 0, 0, 0.3);
+  font-size: 0.62em;
+  line-height: 1.1;
+  color: #cfc6e6;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
-.card-stats {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.55rem;
-  color: #c8bfe0;
+/* Lo que identifica la carta (tipo y nivel) no cede su sitio: si la banda no
+   cabe, lo que se recorta es el detalle, nunca el nombre de la carta. */
+.card-meta-type,
+.card-meta-level {
+  flex: 0 0 auto;
+}
+
+.card-meta-attr,
+.card-meta-stars {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.card-meta-type {
+  color: hsl(var(--type-h) 78% 80%);
+  font-weight: 700;
+}
+.card-meta-level {
+  color: #f4efff;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
+.card-meta-stars {
+  color: #a89ec6;
+}
+.card-meta-equipped {
+  /* El equip se marca aqui porque la banda siempre esta presente, mientra que
+     un distintivo suelto acabaria encima del emblema. */
+  margin-left: auto;
+  padding: 0 0.3em;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #f2dfa0, #c39a33);
+  color: #241a05;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.card-art {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 1.6em;
+  border-radius: 2px;
+  /* La ventana lleva el tono del tipo y encima las bandas diagonales que
+     hacen de reflejo. El angulo cambia por tipo para que dos cartas de la
+     misma fila no se lean con la misma luz. */
+  background:
+    radial-gradient(120% 90% at 30% 8%, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 62%),
+    repeating-linear-gradient(
+      var(--holo-angle),
+      rgba(255, 255, 255, 0.11) 0 0.16em,
+      rgba(255, 255, 255, 0) 0.16em 0.48em
+    ),
+    linear-gradient(var(--holo-angle), var(--art-hi), var(--art-lo));
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.6),
+    inset 0 0.14em 0.4em rgba(0, 0, 0, 0.45);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+/* --- Emblema procedural ---------------------------------------------------
+   Cuatro siluetas (`.e-*`), todas con la misma estructura: un nucleo al que
+   `card.ts` le pasa el tono, el giro y el desplazamiento. El halo de fondo es
+   lo que hace que se lea como un emblema y no como una mancha. */
+
+.card-emblem {
+  --emb-h: calc(var(--type-h) + var(--emb-shift, 0));
+  position: relative;
+  width: 2.4em;
+  height: 2.4em;
+  display: grid;
+  place-items: center;
+  transform: translate(var(--emb-x, 0), var(--emb-y, 0));
+  filter: drop-shadow(0 0 0.22em hsl(var(--emb-h) 90% 58% / 0.6));
+}
+
+.card-emblem::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -20%;
+  border-radius: 50%;
+  background: radial-gradient(circle, hsl(var(--emb-h) 85% 52% / 0.42), rgba(0, 0, 0, 0) 70%);
+}
+
+.card-emblem-core {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform: rotate(var(--emb-r, 0deg));
+  background: linear-gradient(
+    145deg,
+    hsl(var(--emb-h) 88% 76%) 0%,
+    hsl(var(--emb-h) 72% 42%) 52%,
+    hsl(var(--emb-h) 62% 22%) 100%
+  );
+}
+
+/* Anillo: la variante mas neutra, lee como un sello. */
+.card-emblem.e-ring .card-emblem-core {
+  border-radius: 50%;
+  border: 0.22em solid hsl(var(--emb-h) 82% 66%);
+  background: radial-gradient(
+    circle,
+    hsl(var(--emb-h) 88% 64% / 0.9) 0 20%,
+    hsl(var(--emb-h) 72% 30% / 0.3) 58%,
+    rgba(0, 0, 0, 0) 70%
+  );
+}
+.card-emblem.e-ring .card-emblem-core::before {
+  content: '';
+  position: absolute;
+  inset: 30%;
+  border-radius: 50%;
+  background: hsl(var(--emb-h) 92% 82%);
+  box-shadow: 0 0 0.3em hsl(var(--emb-h) 92% 62%);
+}
+
+/* Escudo: el recorte del nucleo hace la silueta; el panel interior la marca. */
+.card-emblem.e-crest .card-emblem-core {
+  clip-path: polygon(50% 0%, 100% 18%, 100% 58%, 50% 100%, 0% 58%, 0% 18%);
+}
+.card-emblem.e-crest .card-emblem-core::before {
+  content: '';
+  position: absolute;
+  inset: 24% 22% 30%;
+  background: hsl(var(--emb-h) 92% 80%);
+  opacity: 0.9;
+}
+
+/* Rombo: dos rombos superpuestos, el hueco del centro hace la linea. */
+.card-emblem.e-prism .card-emblem-core {
+  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+}
+.card-emblem.e-prism .card-emblem-core::after {
+  content: '';
+  position: absolute;
+  inset: 24%;
+  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+  background: hsl(var(--emb-h) 92% 80%);
+}
+
+/* Estrella de ocho puntas. */
+.card-emblem.e-star .card-emblem-core {
+  clip-path: polygon(
+    50% 0%,
+    57.3% 32.5%,
+    85.4% 14.6%,
+    67.6% 42.7%,
+    100% 50%,
+    67.6% 57.3%,
+    85.4% 85.4%,
+    57.3% 67.6%,
+    50% 100%,
+    42.7% 67.6%,
+    14.6% 85.4%,
+    32.4% 57.3%,
+    0% 50%,
+    32.4% 42.7%,
+    14.6% 14.6%,
+    42.7% 32.5%
+  );
+}
+.card-emblem.e-star .card-emblem-core::before {
+  content: '';
+  position: absolute;
+  inset: 33%;
+  border-radius: 50%;
+  background: hsl(var(--emb-h) 95% 84%);
+  box-shadow: 0 0 0.35em hsl(var(--emb-h) 95% 66%);
+}
+
+/* --- Placas de estadisticas ---------------------------------------------- */
+
+.card-stats {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.2em;
+}
+
+.card-stat {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.2em;
+  padding: 0.1em 0.32em;
+  border: 1px solid;
+  border-radius: 2px;
+  font-size: 0.82em;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+}
+
+.card-stat-atk {
+  color: #ffe8e4;
+  border-color: #f0a49c;
+  background: linear-gradient(180deg, #b8362f 0%, #7c1f1b 100%);
+}
+
+.card-stat-def {
+  color: #e6f0ff;
+  border-color: #9cc0f0;
+  background: linear-gradient(180deg, #2f63b5 0%, #1c3c74 100%);
+}
+
+/* A 3.4rem de ancho no cabe escribir "ATK" al lado de cada numero: la etiqueta
+   se queda solo para lectores de pantalla y el color dice cual es cual. */
+.card-stat-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+/* Marca de posicion de defensa: flota sobre la ventana para no robarle altura
+   al emblema en la ficha del campo. */
+.card-stats-def {
+  position: absolute;
+  right: 0.2em;
+  bottom: 0.2em;
+  justify-content: center;
+  padding: 0.05em 0.32em;
+  border: 1px solid #6d4a12;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #f2dfa0, #c39a33);
+  color: #241a05;
+  font-size: 0.62em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-shadow: none;
+}
+
+/* Ficha con un equip puesto: el halo va en la sombra, que ya se sabe como
+   componer con el doble filete. */
+.card.is-equipped {
+  box-shadow: var(--card-inset), 0 0 0 1px var(--frame-hi), 0 0 0.4em hsl(var(--type-h) 85% 58% / 0.55);
+}
+
+/* --- Cara boca abajo ------------------------------------------------------ */
 
 .card-back {
   width: 100%;
   height: 100%;
-  border-radius: 3px;
-  border: 1px solid var(--border-bright);
+  --back-hi: #b9abdd;
+  --back-mid: #6d5f9c;
+  --back-lo: #372e5c;
+  border: 2px solid transparent;
+  border-radius: 5px;
+  padding: 0;
+  /* Dos rejillas cruzadas a +-45 grados hacen el tessellado de rombos; el
+     marco se pinta aparte para que una carta en defensa pueda cambiarlo. */
   background:
-    repeating-linear-gradient(45deg, #2a2444 0 5px, #221d38 5px 10px);
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.07) 0 0.35em, rgba(255, 255, 255, 0) 0.35em 0.7em)
+      padding-box,
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.07) 0 0.35em, rgba(255, 255, 255, 0) 0.35em 0.7em)
+      padding-box,
+    radial-gradient(120% 100% at 50% 0%, #2c2550, #120f22) padding-box,
+    linear-gradient(150deg, var(--back-hi) 0%, var(--back-mid) 34%, var(--back-lo) 52%, var(--back-mid) 72%, var(--back-hi) 100%)
+      border-box;
+  box-shadow: var(--card-inset);
+  position: relative;
   display: grid;
   place-items: center;
-  color: var(--text-faint);
-  font-size: 0.6rem;
+  overflow: hidden;
+  color: #efe4c8;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+/* La marca central: un rombo dorado bajo el texto. Va con `z-index: -1` para
+   quedar detras de la letra en vez de taparla. */
+.card-back::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  left: 50%;
+  top: 50%;
+  width: 46%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%) rotate(45deg);
+  border: 1px solid var(--back-hi);
+  border-radius: 2px;
+  background: radial-gradient(circle, #4a3f72, #241d42);
+  box-shadow: 0 0 0.5em hsl(var(--gold) 80% 60% / 0.4), inset 0 0 0.6em rgba(0, 0, 0, 0.7);
 }
 
 .card-back.is-defense {
-  border-color: var(--blue);
+  --back-hi: #cfe2ff;
+  --back-mid: var(--blue);
+  --back-lo: #1f3f68;
 }
+
+/* --- Carta en la mano ----------------------------------------------------- */
 
 .card-hand {
   width: var(--card-w);
   height: var(--card-h);
   flex-shrink: 0;
   cursor: pointer;
-  transition: transform 120ms ease;
+  /* El boton pierde su cromo: si no, la carta de dentro mide menos que
+     --card-w y el marco queda estrechado por el borde del boton. */
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: 5px;
+  transition:
+    transform 120ms ease,
+    filter 120ms ease;
 }
 
-.card-hand:hover {
+.card-hand .card {
+  font-size: 0.78rem;
+}
+
+/* En la mano la banda es la parte mas apretada del diseno: a 92px de ancho no
+   caben los cuatro datos y media letra cortada se lee como un fallo. Se quedan
+   el tipo, el nivel y la primera estrella —la estrella es lo que de verdad
+   decide el combate— y el atributo cae. El panel de inspeccion lo enseña
+   entero al pasar por encima, igual que la segunda estrella. */
+.card-hand .card-meta-attr,
+.card-hand .card-meta-star2 {
+  display: none;
+}
+
+/* El nombre tiene mas lineas aqui que en la ficha del campo: hay mas ancho. */
+.card-hand .card .card-name {
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+.card-hand:hover:not(:disabled) {
+  background: none;
+  border-color: transparent;
   transform: translateY(-4px);
 }
 
-.card-hand.is-selected {
-  transform: translateY(-10px);
-  box-shadow: 0 0 0 2px var(--gold);
+.card-hand:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
 }
 
-.card-hand.is-playable {
-  border-color: var(--green);
+.zone:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
+}
+
+/* En la ficha del campo el ancho no da para el atributo ni las estrellas: se
+   quedan el tipo y el nivel, que son los que identifican la carta de un
+   vistazo. En la mano caben los cuatro, y la segunda estrella es lo ultimo que
+   cae porque la primera ya basta para leerla. */
+.zone .card-meta-attr,
+.zone .card-meta-stars {
+  display: none;
+}
+
+.zone .card-meta-star2 {
+  display: none;
+}
+
+.card-hand.is-playable .card {
+  box-shadow: var(--card-inset), 0 0 0 1px var(--green), 0 0 0.45rem #4a9d5f66;
+}
+
+.card-hand.is-selected {
+  transform: translateY(-12px);
+  z-index: 3;
+}
+
+.card-hand.is-selected .card {
+  box-shadow:
+    var(--card-inset),
+    0 0 0 2px var(--gold),
+    0 0 0 4px #d4a43733,
+    0 0.7rem 1.4rem #000000aa,
+    0 0 1.1rem #d4a43766;
+  filter: brightness(1.14);
 }
 
 .card-hand.is-locked {
-  opacity: 0.75;
+  opacity: 0.7;
+  filter: grayscale(0.55);
 }
 
 /* ------------------------------------------------------------- Mano ------ */
@@ -711,6 +1145,17 @@ input[type='text']:focus {
   .zone {
     width: 2.6rem;
     height: 3.6rem;
+  }
+
+  /* La ficha del campo y la mano encogen, asi que el texto tambien: el interior
+     de la carta esta en `em`, con lo que basta mover esta medida para que
+     nombre, banda, emblema y placas bajen a la vez. */
+  .zone .card {
+    font-size: 0.48rem;
+  }
+
+  .card-hand .card {
+    font-size: 0.64rem;
   }
 
   .topbar h1 {

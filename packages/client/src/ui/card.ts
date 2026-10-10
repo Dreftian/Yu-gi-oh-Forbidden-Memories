@@ -2,10 +2,12 @@
  * Dibujo de cartas.
  *
  * El repositorio no incluye el arte del juego: las texturas estan dentro del
- * disco original, que no se puede distribuir. Asi que la carta se compone con
- * un marco del color de su tipo, el nombre, el arte como un hueco rayado y las
- * estadisticas. El marco es el color real del retail (oro, verde, rosa, azul),
- * de modo que la silueta de un duelo se lee igual que en el original.
+ * disco original, que no se puede distribuir. Asi que la carta se compone por
+ * capas con CSS: filete del color de su tipo, doble filete interior, nombre,
+ * banda de tipo, ventana de arte con textura holografica y las placas de
+ * ATK y DEF. El unico elemento que se genera con codigo es el emblema de la
+ * ventana, que sale de una mezcla del id de carta para que dos cartas
+ * distintas nunca dibujen el mismo emblema.
  */
 
 import { cardAttributeName, cardTypeName, guardianStarName } from '@yfm/engine';
@@ -34,49 +36,136 @@ function frameClass(type: number | undefined): string {
   }
 }
 
+/**
+ * Las siluetas posibles del emblema.
+ *
+ * Cuatro formas distintas y reconocibles, no ruido: basta una mezcla del id
+ * para elegir una, de modo que el mismo id da siempre el mismo dibujo sin
+ * guardar nada.
+ */
+const EMBLEMS = ['e-ring', 'e-crest', 'e-prism', 'e-star'] as const;
+
+/**
+ * Mezcla entera de un id, para sacarle varias cifras independientes.
+ *
+ * Los ids del catalogo son correlativos: con un solo `%` casi todas las cartas
+ * caerian en la misma silueta. La mezcla de avalanche (xor y desplazamientos)
+ * reparte esos bits por todo el numero.
+ */
+function mix(id: number): number {
+  let h = id >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0;
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
+/**
+ * El emblema que va dentro de la ventana de arte.
+ *
+ * El CSS hace toda la forma; aqui solo se le pasan cuatro numeros derivados
+ * del id: el tono (un desplazamiento del matiz del tipo, para que cada carta
+ * tenga color propio sin salirse de la paleta del marco), el giro, y dos
+ * desplazamientos pequenos que evitan que todas los emblemas salgan centrados
+ * en el mismo milimetro.
+ */
+function emblem(id: number): HTMLElement {
+  const h = mix(id);
+  const node = el('div', { class: `card-emblem ${EMBLEMS[h % EMBLEMS.length]}` });
+  node.style.setProperty('--emb-shift', String(((h >>> 4) % 61) - 30));
+  node.style.setProperty('--emb-r', `${(h >>> 10) % 360}deg`);
+  node.style.setProperty('--emb-x', `${((((h >>> 16) % 9) - 4) / 2).toFixed(2)}%`);
+  node.style.setProperty('--emb-y', `${((((h >>> 20) % 9) - 4) / 2).toFixed(2)}%`);
+  node.append(el('div', { class: 'card-emblem-core' }));
+  return node;
+}
+
+/**
+ * La banda de tipo, justo bajo el nombre.
+ *
+ * Antes estos cuatro datos iban apilados dentro del hueco del arte; ahi se
+ * perdian entre las rayas de fondo. Ahora son su propia zona, con el tipo
+ * en color y el resto en un tono mas soso para que el tipo mande.
+ */
+function cardMeta(view: CardView, equipped: boolean): HTMLElement {
+  const band = el('div', { class: 'card-meta' });
+
+  if (view.type !== undefined) {
+    band.append(el('span', { class: 'card-meta-type', text: cardTypeName(view.type) }));
+  }
+  if (view.level !== undefined && view.level > 0) {
+    band.append(el('span', { class: 'card-meta-level', text: `N${view.level}` }));
+  }
+
+  const attribute = cardAttributeName(view.attribute);
+  if (attribute !== '') band.append(el('span', { class: 'card-meta-attr', text: attribute }));
+
+  const stars = view.stars;
+  if (stars !== undefined && stars[0] > 0) {
+    // La segunda estrella va en su propio span porque el ancho decide si cabe:
+    // el CSS lo quita en la ficha del campo, donde no hay sitio.
+    band.append(el('span', { class: 'card-meta-stars', text: guardianStarName(stars[0]) }));
+    if (stars[1] !== stars[0]) {
+      band.append(el('span', { class: 'card-meta-stars card-meta-star2', text: guardianStarName(stars[1]) }));
+    }
+  }
+
+  // El equip no cabe en un hueco propio sin tapar el emblema, asi que se marca
+  // en la banda, que siempre esta visible.
+  if (equipped) band.append(el('span', { class: 'card-meta-equipped', text: 'EQ' }));
+
+  return band;
+}
+
+/**
+ * Una placa de estadistica.
+ *
+ * El numero va suelto y en color, como en el marco real: el rojo es ATK y el
+ * azul es DEF. La etiqueta se queda solo para lectores de pantalla, porque a
+ * 3.4rem de ancho no cabe escribir "ATK" al lado de cada numero.
+ */
+function statPlate(kind: 'atk' | 'def', value: number): HTMLElement {
+  const plate = el('span', { class: `card-stat card-stat-${kind}` });
+  plate.append(el('b', { class: 'card-stat-label', text: `${kind === 'atk' ? 'ATK' : 'DEF'} ` }));
+  plate.append(el('span', { class: 'card-stat-value', text: String(value) }));
+  return plate;
+}
+
 /** Una carta visible. */
 export function cardView(view: CardView, options: { faceDown?: boolean } = {}): HTMLElement {
   // Una carta boca abajo, o cuya identidad no nos ha llegado, es una ficha.
   if (view.faceDown || options.faceDown === true || view.id === null) {
-    const back = el('div', {
+    return el('div', {
       class: `card-back${view.defensePosition === true ? ' is-defense' : ''}`,
       text: view.defensePosition === true ? 'DEF' : '?',
     });
-    return back;
   }
 
-  const node = el('div', { class: `card ${frameClass(view.type)}` });
+  const equipped = view.equipped === true;
+  const classes = ['card', frameClass(view.type)];
+  // El halo de la ficha equipada lo pinta el CSS a partir de esta clase.
+  if (equipped) classes.push('is-equipped');
+  const node = el('div', { class: classes.join(' ') });
 
   node.append(el('div', { class: 'card-name', text: view.name }));
+  node.append(cardMeta(view, equipped));
 
-  // El hueco del arte. Sin imagen que poner, muestra el tipo y el atributo.
   const art = el('div', { class: 'card-art' });
-  const typeName = cardTypeName(view.type);
-  const attributeName = cardAttributeName(view.attribute);
-  const level = view.level === undefined || view.level === 0 ? '' : `N${view.level}`;
-  const stars =
-    view.stars === undefined || view.stars[0] === 0
-      ? ''
-      : `${guardianStarName(view.stars[0])}${
-          view.stars[1] === view.stars[0] ? '' : `/${guardianStarName(view.stars[1])}`
-        }`;
-  // Los cuatro datos van apilados dentro del hueco del arte; el CSS los
-  // muestra en varias lineas con los saltos que se dejan aqui.
-  art.append(
-    el('span', { text: [typeName, attributeName, level, stars].filter((part) => part !== '').join('\n') }),
-  );
+  art.append(emblem(view.id));
+  // La marca de posicion de defensa va flotando sobre la ventana: si ocupara
+  // su propia fila, en la ficha del campo no le quedaria altura al emblema.
+  if (view.defensePosition === true) {
+    art.append(el('div', { class: 'card-stats card-stats-def', text: 'DEF' }));
+  }
   node.append(art);
 
-  if (view.attack !== undefined && view.defense !== undefined && (view.attack > 0 || view.defense > 0)) {
+  // Magias, trampas y Ancestros sin numeros no gastan fila en placas.
+  const hasStats =
+    view.attack !== undefined && view.defense !== undefined && (view.attack > 0 || view.defense > 0);
+  if (hasStats) {
     const stats = el('div', { class: 'card-stats' });
-    stats.append(el('span', { text: `${view.attack}` }));
-    stats.append(el('span', { text: `${view.defense}` }));
+    stats.append(statPlate('atk', view.attack ?? 0));
+    stats.append(statPlate('def', view.defense ?? 0));
     node.append(stats);
-  }
-
-  // El icono de defensa va aparte porque cambia el aspecto de la ficha.
-  if (view.defensePosition === true) {
-    node.append(el('div', { class: 'card-stats', text: 'DEF' }));
   }
 
   return node;
@@ -133,6 +222,7 @@ export function describeCard(view: CardView): { title: string; body: string } {
   if (view.attack !== undefined && view.defense !== undefined) {
     lines.push(`ATK ${view.attack} / DEF ${view.defense}`);
   }
+  if (view.equipped === true) lines.push('Lleva un equip puesto.');
   if (view.defensePosition === true) lines.push('En posicion de defensa.');
   if (view.description !== undefined && view.description !== '') lines.push('', view.description);
 
